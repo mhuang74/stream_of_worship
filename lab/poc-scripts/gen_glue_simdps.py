@@ -80,21 +80,28 @@ def dry_run(args: argparse.Namespace) -> int:
             print(
                 f"j{junction} · {bpm:g} BPM · {beats} beats · "
                 f"gap [{start}, {end}) = {end - start:,} frames · "
-                f"montage {total:,} frames · guide {b_ms / 1000:g} s · "
+                f"montage {total:,} frames · incoming arrangement {b_ms / 1000:g} s · "
                 f"{args.takes} take(s) · seed {args.seed_base} onward · {args.steps} steps"
             )
     return 0
 
 
-def arrange_guide(item: glue.SongsetItem, out_root: Path, r2) -> np.ndarray:
+def arrange_guide(item: glue.SongsetItem, out_root: Path, r2) -> np.ndarray | None:
+    from botocore.exceptions import ClientError
+
     key = f"{item.hash_prefix}/stems/instrumental.flac"
     directory = out_root / "cache" / "stems" / item.hash_prefix
     source = directory / "instrumental.flac"
     decoded = directory / "instrumental.wav"
     if not source.is_file():
         if not r2.file_exists(key):
-            raise FileNotFoundError(f"missing R2 instrumental stem {key}")
-        r2.download_file(key, source)
+            return None
+        try:
+            r2.download_file(key, source)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey"}:
+                return None
+            raise
     if decoded.is_file():
         samples = glue.read_wav(decoded)
     else:
@@ -237,12 +244,20 @@ def process_junction(
     guide_data = b""
     try:
         guide = arrange_guide(item, args.out_root, r2)
-        path = base / "guide.flac"
-        glue.write_flac(run_dir / path, guide, subtype="PCM_24")
-        guide_data = (run_dir / path).read_bytes()
-        entry["guide"] = path.as_posix()
-        entry["guide_frames"] = len(guide)
-        entry["input_summary"] = f"instrumental search source {len(guide) / glue.SR:.2f} s"
+        if guide is None:
+            guide_data = (run_dir / entry["to"]["file"]).read_bytes()
+            entry["search_source"] = "incoming_mix"
+            entry["input_summary"] = (
+                f"incoming mix search source {len(b) / glue.SR:.2f} s · instrumental stem missing"
+            )
+        else:
+            path = base / "guide.flac"
+            glue.write_flac(run_dir / path, guide, subtype="PCM_24")
+            guide_data = (run_dir / path).read_bytes()
+            entry["search_source"] = "instrumental_stem"
+            entry["guide"] = path.as_posix()
+            entry["guide_frames"] = len(guide)
+            entry["input_summary"] = f"instrumental search source {len(guide) / glue.SR:.2f} s"
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as exc:
         guide_error = str(exc)
         entry["error"] = guide_error

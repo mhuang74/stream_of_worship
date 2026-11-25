@@ -351,7 +351,7 @@ Listening works the same way as the ElevenLabs page above — serve the run dire
 
 ## gen_glue_simdps.py — Glue guided by the incoming instrumental stem
 
-The CLI loads a 2–5 song Songset from Postgres and reads the original mixes and instrumental stems from R2. The montage contains the outgoing arrangement's last 12 seconds, silence for the requested beats, and the incoming arrangement's first 12 seconds. SimDPS-Multi searches the incoming instrumental stem after applying all of its Arrangement Steps in playback order.
+The CLI loads a 2–5 song Songset from Postgres and reads the original mixes from R2. The montage contains the outgoing arrangement's last 12 seconds, silence for the requested beats, and the incoming arrangement's first 12 seconds. SimDPS-Multi searches the incoming instrumental stem after applying all of its Arrangement Steps in playback order. When R2 confirms the stem is missing, the CLI uses the full incoming arrangement as the search source. That mix can contain vocals.
 
 The Modal app uses Python 3.11, an L4, and the ACE-Step 1.5 base prior. The first invocation downloads the model weights to the `sow-simdps-models` Modal volume. The pinned SimDPS sampler uses a 15-second model window around the gap and requires context beyond the latent mask on both sides. A take that exceeds the model window is marked failed. The app crops the generated window using SimDPS's returned gap coordinates and returns an exact-length 44.1 kHz stereo float WAV. [Pinned SimDPS API](https://github.com/s-turland/SimDPSInpainting/blob/f5175f14b3be67e28ffc7c95874265a0390a9ada/simdps/inpainter.py)
 
@@ -379,7 +379,7 @@ uv run --project lab/poc-scripts --python 3.11 --extra audio_inpaint \
 | `--run-name` | `run1` |
 | `--force` | Allow reuse of an existing run directory and replace overlapping artifacts. The report and index list the current run's artifacts. |
 
-`context/` contains the original arranged mixes. Each `junctions/jN/` has the arranged guide, montages, raw float WAV fills, staged FLAC fills, seam excerpts, and complete pair splices alongside the production gap or crossfade baseline. The staged gain and fades apply to the fill only. `full-set/` contains the production baseline and an assembled version for each beat count and take with a usable fill at every junction. Missing stems and failed takes are recorded in `index.json` and `report.html`. Successful artifacts and baselines remain available, and the CLI exits with status `2` if any take fails.
+`context/` contains the original arranged mixes. Each `junctions/jN/` has montages, raw float WAV fills, staged FLAC fills, seam excerpts, and complete pair splices alongside the production gap or crossfade baseline. Junctions with a stem also have an arranged guide. The staged gain and fades apply to the fill only. `full-set/` contains the production baseline and an assembled version for each beat count and take with a usable fill at every junction. Both `index.json` and `report.html` show which search source each junction used. Stem access or decoding errors and other take failures are recorded in both files. Successful artifacts and baselines remain available, and the CLI exits with status `2` if any take fails.
 
 ```bash
 python -m http.server 8092 --bind 127.0.0.1 \

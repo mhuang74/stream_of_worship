@@ -52,11 +52,12 @@ def read_audio(path):
     return samples
 
 
-@pytest.mark.parametrize("missing_guide", [False, True])
+@pytest.mark.parametrize("stem_state", ["present", "missing", "removed", "denied"])
 def test_run_keeps_song_sides_exact_and_reports_every_junction(
-    tmp_path, monkeypatch, missing_guide
+    tmp_path, monkeypatch, stem_state
 ):
     import psycopg
+    from botocore.exceptions import ClientError
     from stream_of_worship.admin.services import r2
 
     prefixes = ["first-song", "second-song", "third-song"]
@@ -77,25 +78,36 @@ def test_run_keeps_song_sides_exact_and_reports_every_junction(
     expected_guide = np.concatenate([source[-SR // 2 :], source[: SR // 2], source[-SR // 2 :]])
     requests = []
     downloads = []
+    first_stem = "second-song/stems/instrumental.flac"
+    uses_mix = stem_state in {"missing", "removed"}
 
     class FakeR2:
         def __init__(self, **_kwargs):
             pass
 
         def file_exists(self, key):
-            return not (missing_guide and key == "second-song/stems/instrumental.flac")
+            if key == first_stem and stem_state == "denied":
+                raise ClientError({"Error": {"Code": "AccessDenied"}}, "HeadObject")
+            return not (key == first_stem and stem_state == "missing")
 
         def download_file(self, key, path):
             downloads.append(key)
+            if key == first_stem and stem_state == "removed":
+                raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
             simdps.glue.write_flac(path, source, subtype="PCM_24")
 
     def remote(montage, guide, gap, seed, steps):
-        np.testing.assert_array_equal(read_audio(BytesIO(guide)), expected_guide)
+        if uses_mix and not requests:
+            np.testing.assert_allclose(
+                read_audio(BytesIO(guide)), expected_guide / 3, atol=1 / 32768
+            )
+        else:
+            np.testing.assert_array_equal(read_audio(BytesIO(guide)), expected_guide)
         assert sf.info(BytesIO(guide)).format == "FLAC"
         assert sf.info(BytesIO(montage)).format == "FLAC"
         assert (gap, seed, steps) == ((SR, SR + SR // 2), 0, 100)
         np.testing.assert_array_equal(read_audio(BytesIO(montage))[slice(*gap)], 0)
-        requests.append(gap)
+        requests.append(guide)
         output = BytesIO()
         sf.write(output, np.full((SR // 2, 2), 0.2), SR, format="WAV", subtype="FLOAT")
         return output.getvalue(), {"sampling_seconds": 1.0}
@@ -116,8 +128,8 @@ def test_run_keeps_song_sides_exact_and_reports_every_junction(
 
     code = simdps.main(["--out-root", str(tmp_path), "--beats", "1", "--context-seconds", "1"])
 
-    assert code == (2 if missing_guide else 0)
-    assert len(requests) == (1 if missing_guide else 2)
+    assert code == (2 if stem_state == "denied" else 0)
+    assert len(requests) == (1 if stem_state == "denied" else 2)
     assert downloads[-1] == "third-song/stems/instrumental.flac"
     run = tmp_path / "run1"
     index = json.loads((run / "index.json").read_text())
@@ -145,10 +157,19 @@ def test_run_keeps_song_sides_exact_and_reports_every_junction(
     assert "SimDPS Glue" in report
     assert "vocals heard" in report and "Export scores" in report
     assert take["files"]["full"] in report
-    if missing_guide:
+    assert second["search_source"] == "instrumental_stem"
+    assert (run / second["guide"]).is_file()
+    if uses_mix:
+        assert first["search_source"] == "incoming_mix"
+        assert requests[0] == (run / first["to"]["file"]).read_bytes()
+        assert "guide" not in first and "error" not in first
+        assert "incoming mix search source 1.50 s · instrumental stem missing" in report
+    elif stem_state == "present":
+        assert first["search_source"] == "instrumental_stem"
+    if stem_state == "denied":
         assert first["takes"][0]["status"] == "failed"
-        assert "missing R2 instrumental stem" in first["takes"][0]["error"]
-        assert "missing R2 instrumental stem" in report
+        assert "AccessDenied" in first["takes"][0]["error"]
+        assert "AccessDenied" in report
         assert full_take["status"] == "unavailable"
         assert not (run / "full-set" / "beats-1.flac").exists()
     else:
@@ -159,3 +180,4 @@ def test_run_keeps_song_sides_exact_and_reports_every_junction(
             context = read_audio(run / item["file"])
             np.testing.assert_array_equal(full[offset : offset + len(context)], context)
             offset += len(context) + SR // 2
+        assert len(full) == offset - SR // 2
