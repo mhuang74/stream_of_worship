@@ -184,6 +184,7 @@ def handler(event, context):
 - Same ECR container image, different compute target
 - Fargate cost: ~$0.01/min for 1 vCPU / 4GB — still pay-per-use, no always-on cost
 - Document this as a known escalation path; do not implement unless needed
+- **Status: not implemented.** No ECS cluster, service, or task definition exists; production compute remains Lambda. See [DEVELOPER.md § Deployment Topology](../DEVELOPER.md#deployment-topology).
 
 **Worker responsibilities:**
 1. Receive SQS message via Lambda event source mapping

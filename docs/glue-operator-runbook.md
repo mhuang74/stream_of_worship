@@ -265,6 +265,8 @@ Use per-function billed duration, SQS requests, CloudWatch ingestion, transfer, 
    ```
 
    Published by run [`45717439002`](https://github.com/mhuang74/stream_of_worship/actions/runs/45717439002) for commit `2514dcdb`; `delivery/simdps-worker/**` and `simdps_audio.py` are unchanged from that commit through `7a6dfa01`, so the digest still describes the current worker. RunPod already loaded `acestep-v15-base` from those baked weights on an NVIDIA L4 with this digest (9.055 s model load, 18.694 s sampling, `staging ok`, endpoint `ry7hkdvvq7cvj7`), which is the offline-completeness proof; re-run `--check-model` only if a new digest is published.
+
+   **Registry:** this image publishes to GHCR, not ECR. Both consumers pull the digest directly — the RunPod endpoint through its registry credentials, Modal through `Image.from_registry(...)` — so no AWS IAM or ECR pull policy is involved. Full registry/compute matrix: [DEVELOPER.md § Deployment Topology](../DEVELOPER.md#deployment-topology).
 4. Create a Modal secret named `sow-glue-simdps-r2` holding the same R2 host and bucket variables. For a private image, also configure a Modal registry secret and set `SIMDPS_MODAL_REGISTRY_SECRET` to its name. From the repository root deploy the same immutable image digest with:
 
    ```bash

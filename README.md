@@ -229,6 +229,8 @@ npx drizzle-kit migrate    # Run pending migrations
 
 The web app deploys to **Vercel**. Render jobs are enqueued to AWS SQS and processed by a Lambda worker (Docker container deployed to private ECR), so the Vercel function only needs a short timeout for job creation and SSE progress streaming.
 
+Container images follow the compute target: the Lambda render/Glue image lives in **private ECR** (`sow-render-worker`, tag = commit SHA) while the GPU SimDPS image lives in **GHCR** (`ghcr.io/mhuang74/stream_of_worship-simdps-worker`) and is pulled by Modal and RunPod by digest. No ECS cluster, service, or task definition is provisioned (AWS Fargate is only an unimplemented fallback). See [DEVELOPER.md § Deployment Topology](DEVELOPER.md#deployment-topology).
+
 See [delivery/webapp/README.md](delivery/webapp/README.md) for full deployment instructions including:
 - Vercel project setup
 - Environment variable configuration
