@@ -6,6 +6,7 @@ vi.mock("@/db", () => ({ db: {} }));
 import {
   computeGlueQuote,
   deriveGlueJunction,
+  isGpuFallbackEnabled,
   type GlueJunctionReady,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
@@ -217,5 +218,12 @@ describe("computeGlueQuote", () => {
       ...derivation, fromSide: { ...derivation.fromSide, excerptTooShort: true },
     }, new Set(), rejected, true).blockedSides)
       .toEqual([{ side: "A", code: "GLUE_EXCERPT_TOO_SHORT" }]);
+  });
+
+  it("enables GPU fallback only for the cascade selector", () => {
+    expect(isGpuFallbackEnabled("cascade")).toBe(true);
+    expect(isGpuFallbackEnabled("elevenlabs")).toBe(false);
+    expect(isGpuFallbackEnabled("simdps")).toBe(false);
+    expect(isGpuFallbackEnabled(undefined)).toBe(false);
   });
 });

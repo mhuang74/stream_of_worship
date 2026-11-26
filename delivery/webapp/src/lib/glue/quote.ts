@@ -375,6 +375,17 @@ export function normalizeGlueBeats(value: number): GlueBeats {
 }
 
 /**
+ * Whether the browser may quote a junction whose cached excerpt is a copyright
+ * rejection (the GPU providers synthesize from the incoming mix instead).
+ * Must match the Glue Lambda's selector: a quote that claims GPU availability
+ * while the worker serves ElevenLabs lets a user start a junction that cannot
+ * be generated.
+ */
+export function isGpuFallbackEnabled(provider = process.env.SOW_GLUE_PROVIDER): boolean {
+  return provider === "cascade";
+}
+
+/**
  * Owner-scoped generation quote. Returns `null` for an unknown Songset or
  * `fromItemId`; throws `GlueQuoteError` for saved-input validation failures.
  */
@@ -412,7 +423,7 @@ export async function getGlueQuote(args: {
     derivation.fromSide.contentHash,
     derivation.toSide.contentHash,
   ]);
-  const gpuFallback = process.env.SOW_GLUE_PROVIDER === "cascade";
+  const gpuFallback = isGpuFallbackEnabled();
   const core = computeGlueQuote(derivation, cached, rejected, gpuFallback);
   const quota = await readGlueQuota(args.userId);
   return {

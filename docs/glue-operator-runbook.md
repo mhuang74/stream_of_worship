@@ -257,6 +257,14 @@ Use per-function billed duration, SQS requests, CloudWatch ingestion, transfer, 
 1. Deploy migration `0030_glue_provider_context`, the compatible worker and editor with `SOW_GLUE_PROVIDER=elevenlabs` in production. Keep deprecated credit response fields while previous browser bundles drain.
 2. Verify catalog clearance for sending excerpts and the guide to **both** GPU services. Use an isolated R2 bucket for staging. Add a one-day lifecycle rule scoped to `glue-simdps-tmp/` in staging and production. Preserve adjacent rules and canonical audio retention.
 3. Use the SimDPS image workflow to publish the Linux amd64 image. Run `docker run --gpus all --network none <image@digest> --check-model` on an isolated GPU host. Deploy that digest to the private RunPod queue endpoint with one L4 per worker, min 0, max 2, 10-second idle timeout and queue-delay scaling. Set `SIMDPS_R2_HOST` and `SIMDPS_R2_BUCKET` on the endpoint.
+
+   **Image input for both services** (immutable per commit, `ENV HF_HUB_OFFLINE=1` baked weights):
+
+   ```
+   ghcr.io/mhuang74/stream_of_worship-simdps-worker@sha256:23fbb0f528633b2a5034166c54efadd83246d8bf6d94d2ed5b921b61fd051cc6
+   ```
+
+   Published by run [`45717439002`](https://github.com/mhuang74/stream_of_worship/actions/runs/45717439002) for commit `2514dcdb`; `delivery/simdps-worker/**` and `simdps_audio.py` are unchanged from that commit through `7a6dfa01`, so the digest still describes the current worker. RunPod already loaded `acestep-v15-base` from those baked weights on an NVIDIA L4 with this digest (9.055 s model load, 18.694 s sampling, `staging ok`, endpoint `ry7hkdvvq7cvj7`), which is the offline-completeness proof; re-run `--check-model` only if a new digest is published.
 4. Create a Modal secret named `sow-glue-simdps-r2` holding the same R2 host and bucket variables. For a private image, also configure a Modal registry secret and set `SIMDPS_MODAL_REGISTRY_SECRET` to its name. From the repository root deploy the same immutable image digest with:
 
    ```bash

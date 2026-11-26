@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 import numpy as np
 import pytest
+import urllib3
 import soundfile as sf
 
 from sow_render_worker import glue_runpod as provider
@@ -339,3 +340,149 @@ def test_lost_promotion_acknowledgement_leaves_sqs_recovery_available(monkeypatc
 
     with pytest.raises(RuntimeError, match="response is durable; retry staging delivery"):
         provider.finish_contacted(None, job, route, None, tmp_path, None, lambda *a, **k: None)
+
+
+class _FakeResponse:
+    def __init__(self, status, chunks, *, sock=None):
+        self.status = status
+        self._chunks = list(chunks)
+        self.connection = SimpleNamespace(sock=sock)
+        self.closed = False
+        self.released = False
+
+    def read1(self, size, decode_content=False):
+        return self._chunks.pop(0) if self._chunks else b""
+
+    def close(self):
+        self.closed = True
+
+    def release_conn(self):
+        self.released = True
+
+
+class _FakePool:
+    def __init__(self, response=None, error=None):
+        self.response = response
+        self.error = error
+
+    def request(self, method, url, **kwargs):
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+def _call(response=None, error=None):
+    pool = _FakePool(response, error)
+    api = provider.RunpodAPI("endpoint", "token", pool=pool)
+    return api.call("POST", "run", provider.time.monotonic() + 5, b"{}")
+
+
+def test_runpod_api_parses_json_and_rejects_bad_bodies():
+    socket = SimpleNamespace(settimeout=lambda value: None)
+    ok = _FakeResponse(200, [b'{"id": "remote"}', b""], sock=socket)
+    assert _call(ok) == (200, {"id": "remote"})
+    assert (ok.closed, ok.released) == (True, True)
+
+    failing = _FakeResponse(500, [b"internal error"])
+    assert _call(failing) == (500, {})
+    assert (failing.closed, failing.released) == (True, True)
+
+    oversized = _FakeResponse(200, [b"x" * 4096] * 20)
+    assert _call(oversized) == (None, {})
+    assert oversized.closed
+
+    assert _call(error=urllib3.exceptions.HTTPError("boom")) == (None, {})
+
+
+def _frozen_r2():
+    objects = {}
+
+    def put_object(**kwargs):
+        objects[kwargs["Key"]] = kwargs["Body"]
+
+    def get_object(*, Bucket, Key):
+        data = objects[Key]
+        return {"ContentLength": len(data), "Body": BytesIO(data)}
+
+    client = SimpleNamespace(
+        put_object=put_object,
+        get_object=get_object,
+        generate_presigned_url=lambda command, Params, **_: Params["Key"],
+    )
+    return SimpleNamespace(client=client, bucket_name="private"), objects
+
+
+def _signed_route():
+    rate = provider.SAMPLE_RATE
+    a_frames, fill_frames, b_frames = 4410, 4410, 4410
+    montage = np.zeros((a_frames + fill_frames + b_frames, 2), dtype="<i2")
+    montage[:a_frames] = 1024
+    montage[a_frames + fill_frames :] = 2048
+    guide = np.zeros((1920, 2), dtype="<i2")
+    audio = (
+        provider.encode_flac(montage, "PCM_16"),
+        provider.encode_flac(guide, "PCM_24"),
+        {
+            "a_frames": a_frames,
+            "fill_frames": fill_frames,
+            "b_frames": b_frames,
+            "guide_frames": len(guide),
+            "seed": 4321,
+            "search_source": "incoming_mix",
+        },
+    )
+    r2, objects = _frozen_r2()
+    prefix = "glue-simdps-tmp/7/job"
+    route, request = provider.stage_inputs(r2, "endpoint", prefix, audio)
+    provider.sign_request(r2, prefix, route, request)
+    seam = montage.copy()
+    seam[a_frames : a_frames + fill_frames] = 4096
+    assert rate == 44100
+    return r2, objects, route, seam.tobytes()
+
+
+def test_verify_result_rejects_metadata_or_preserved_audio_mismatch():
+    r2, objects, route, seam = _signed_route()
+    deadline = provider.time.monotonic() + 5
+    metadata = provider.result_metadata(route)
+
+    with pytest.raises(provider.InvalidResult):
+        provider._verify_result(
+            r2, route, deadline, (seam, dict(metadata, **{"submission-id": "someone-else"}))
+        )
+
+    montage = objects[route["montage_key"]]
+    objects[route["montage_key"]] = b"other montage bytes"
+    with pytest.raises(provider.InvalidResult):
+        provider._verify_result(r2, route, deadline, (seam, metadata))
+    objects[route["montage_key"]] = montage
+
+    corrupted = bytearray(seam)
+    corrupted[-4:] = b"\x00\x01\x00\x01"
+    with pytest.raises(provider.InvalidResult):
+        provider._verify_result(r2, route, deadline, (bytes(corrupted), metadata))
+
+    assert provider._verify_result(r2, route, deadline, (seam, metadata)) == seam
+
+
+def test_prepare_audio_reports_unsupported_window(tmp_path):
+    excerpts = []
+    for name in ("a", "b"):
+        path = tmp_path / f"{name}.wav"
+        sf.write(path, np.zeros((64, 2), dtype="<i2"), provider.SAMPLE_RATE, subtype="PCM_16")
+        excerpts.append(SimpleNamespace(wav_path=path))
+    inputs = SimpleNamespace(
+        descriptor={"beats": 4, "toTempoBpm": 120.0},
+        to_item={"recording_hash_prefix": "a" * 16},
+        to_steps=[[0, 2.0]],
+    )
+    assert provider.prepare_audio(
+        SimpleNamespace(seed=4321),
+        inputs,
+        *excerpts,
+        None,
+        tmp_path,
+        None,
+        None,
+        time_left=lambda: 60,
+    ) == (None, "unsupported-window")

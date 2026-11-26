@@ -7,10 +7,13 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import numpy as np
+import psycopg2
 import pytest
 from botocore.exceptions import ClientError
+from modal import exception as modal_error
 
 from sow_render_worker import glue_cascade as cascade
+from sow_render_worker import glue_excerpts
 from sow_render_worker import glue_jobs as spine
 
 
@@ -26,10 +29,17 @@ def delivery(monkeypatch, tmp_path):
     objects = {}
     published = {}
     saved = SimpleNamespace(route=None, charged=0, raw=None)
+    events = []
+    montage_puts = 0
     state = SimpleNamespace(
         eleven="success",
         backend_ready={},
         modal_fails=False,
+        modal_reject=False,
+        remote_bad=False,
+        runpod_status="IN_PROGRESS",
+        lookup_fail=False,
+        hedge_storage_fail=False,
         invalid=None,
         crash_at=None,
         deny=None,
@@ -69,6 +79,8 @@ def delivery(monkeypatch, tmp_path):
         now += seconds
 
     def read_object(Bucket, Key):
+        if state.lookup_fail and Key.endswith("seam.pcm"):
+            raise ClientError({"Error": {"Code": "InternalError"}}, "GetObject")
         for backend, (request, submitted) in published.items():
             duration = state.backend_ready.get(backend, float("inf"))
             if Key == request["result_url"] and now >= submitted + duration:
@@ -88,11 +100,16 @@ def delivery(monkeypatch, tmp_path):
         return {"Body": BytesIO(data), "ContentLength": len(data), "Metadata": metadata}
 
     def put_object(Bucket, Key, Body, **kwargs):
+        nonlocal montage_puts
         data = Body if isinstance(Body, bytes) else Body.read()
+        kind = Key.rsplit("/", 1)[-1]
+        if kind == "montage.flac":
+            if state.hedge_storage_fail and montage_puts:
+                raise OSError("input storage unavailable")
+            montage_puts += 1
         if Key in objects:
             raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
         objects[Key] = data, {}
-        kind = Key.rsplit("/", 1)[-1]
         if state.crash_at == kind:
             raise Interrupted
 
@@ -132,7 +149,7 @@ def delivery(monkeypatch, tmp_path):
         published[backend] = request, now
         if state.crash_at == "submit":
             raise Interrupted
-        return backend
+        return "not-an-id!" if state.remote_bad else backend
 
     def runpod_call(method, operation, deadline, payload=None):
         if operation == "run":
@@ -141,10 +158,15 @@ def delivery(monkeypatch, tmp_path):
             return 200, {"id": submit("runpod", request["input"], deadline)}
         if operation.startswith("cancel/"):
             cancelled.append("runpod")
-        return 200, {"status": "IN_PROGRESS"}
+        return 200, {"status": state.runpod_status}
+
+    def modal_submit(request, deadline):
+        if state.modal_reject:
+            raise modal_error.AuthError("submission rejected")
+        return submit("modal", request, deadline)
 
     modal = SimpleNamespace(
-        submit=lambda request, deadline: submit("modal", request, deadline),
+        submit=modal_submit,
         poll=lambda *args: ("FAILED" if state.modal_fails else None, {}),
         cancel=lambda *args: cancelled.append("modal"),
     )
@@ -211,6 +233,9 @@ def delivery(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("SOW_ELEVENLABS_API_KEY", "test")
 
+    def log(event, **fields):
+        events.append((event, fields))
+
     def deliver(*, recover=False):
         if recover:
             job.provider_contacted = bool(saved.charged)
@@ -221,7 +246,7 @@ def delivery(monkeypatch, tmp_path):
             tmp_path,
             None,
             None,
-            lambda *args, **kwargs: None,
+            log,
             saved_route=job.provider_context_json if recover else None,
         )
         runner.run()
@@ -240,6 +265,8 @@ def delivery(monkeypatch, tmp_path):
         cancelled=cancelled,
         objects=objects,
         job=job,
+        events=events,
+        log=log,
     )
 
 
@@ -359,3 +386,146 @@ def test_duplicate_delivery_does_not_run_an_already_claimed_cascade(delivery, mo
     monkeypatch.setattr(spine, "claim_glue_job", lambda *args: (delivery.job, False))
     spine.execute_glue_job(delivery.job.id, delivery.job.user_id, None)
     assert delivery.submissions == []
+
+
+def test_execute_rewrites_a_contacted_deadline_failure(delivery, monkeypatch, tmp_path):
+    failures = []
+    staged = []
+
+    def runaway(self):
+        raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "paid")
+
+    def fail(conn, job, exc, *, contacted, log):
+        failures.append((exc.code, exc.retry_kind, contacted))
+
+    def after(*args, **kwargs):
+        staged.append(kwargs)
+
+    monkeypatch.setattr(cascade.Cascade, "run", runaway)
+    monkeypatch.setattr(spine, "_handle_failure", fail)
+    monkeypatch.setattr(spine, "_after_provider_stage", after)
+    delivery.job.provider_contacted = True
+    cascade.execute(None, delivery.job, tmp_path, None, None, delivery.log)
+    assert failures == [(spine.GLUE_WORKER_FAILED, "paid", True)]
+    assert staged == []
+
+
+def test_execute_reports_gpu_ineligibility_without_charge(delivery, monkeypatch, tmp_path):
+    failures = []
+
+    def unavailable(self):
+        raise glue_excerpts.GlueAudioUnavailable("Incoming recording is unavailable", side="B")
+
+    def fail(conn, job, exc, *, contacted, log):
+        failures.append((exc.code, exc.retry_kind, contacted))
+
+    monkeypatch.setattr(cascade.Cascade, "run", unavailable)
+    monkeypatch.setattr(spine, "_handle_failure", fail)
+    cascade.execute(None, delivery.job, tmp_path, None, None, delivery.log)
+    assert failures == [("GLUE_JUNCTION_AUDIO_UNAVAILABLE", "none", False)]
+    assert cascade.JUNCTION_AUDIO_UNAVAILABLE == "GLUE_JUNCTION_AUDIO_UNAVAILABLE"
+
+
+def test_execute_reraises_after_database_loss(delivery, monkeypatch, tmp_path):
+    def lost(self):
+        raise psycopg2.Error("connection lost")
+
+    monkeypatch.setattr(cascade.Cascade, "run", lost)
+    delivery.job.provider_contacted = True
+    with pytest.raises(psycopg2.Error):
+        cascade.execute(None, delivery.job, tmp_path, None, None, delivery.log)
+
+
+@pytest.mark.parametrize(("elevenlabs", "hedge"), [("0", "180"), ("400", "400")])
+def test_invalid_generation_timing_is_not_configured(monkeypatch, elevenlabs, hedge):
+    monkeypatch.setenv("SOW_GLUE_ELEVENLABS_SECONDS", elevenlabs)
+    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", hedge)
+    with pytest.raises(spine.GlueJobError) as caught:
+        cascade.Timing.from_env()
+    assert (caught.value.code, caught.value.retry_kind) == (spine.GLUE_NOT_CONFIGURED, "free")
+
+
+def test_recovery_rejects_corrupted_gpu_input(delivery):
+    delivery.state.skip = True
+    delivery.state.crash_at = "submit"
+    with pytest.raises(Interrupted):
+        delivery.deliver()
+    delivery.objects[delivery.saved.route["attempts"]["modal"]["montage_key"]] = (
+        b"corrupt montage",
+        {},
+    )
+    delivery.state.crash_at = None
+    with pytest.raises(RuntimeError, match="Stored SimDPS input is unavailable"):
+        delivery.deliver(recover=True)
+
+
+def test_recovery_without_elevenlabs_artifact_falls_forward(delivery):
+    delivery.state.crash_at = "intent"
+    delivery.state.backend_ready = {"modal": 3}
+    with pytest.raises(Interrupted):
+        delivery.deliver()
+    delivery.state.crash_at = None
+    assert delivery.deliver(recover=True) == "modal"
+    attempt = delivery.saved.route["attempts"]["elevenlabs"]
+    assert attempt["failure"] == "ambiguous"
+    # The interrupted upload is the only ElevenLabs contact; recovery never repeats it.
+    assert attempt["operations"] == {"upload-a": 1000}
+    assert delivery.submissions == [("modal", 1000)]
+
+
+def test_terminal_runpod_status_falls_back_to_modal(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", "12")
+    delivery.state.skip = True
+    delivery.state.runpod_status = "FAILED"
+    delivery.state.backend_ready = {"modal": 30}
+    assert delivery.deliver() == "modal"
+    assert delivery.saved.route["attempts"]["runpod"]["failure"] == "remote-failed"
+    assert delivery.submissions == [("modal", 1000), ("runpod", 1012)]
+    # A terminal attempt is finished; cancelling it would be a wasted paid call.
+    assert delivery.cancelled == []
+
+
+def test_rejected_gpu_submission_advances_to_the_other_backend(delivery):
+    delivery.state.skip = True
+    delivery.state.modal_reject = True
+    delivery.state.backend_ready = {"runpod": 3}
+    assert delivery.deliver() == "runpod"
+    assert delivery.saved.route["attempts"]["modal"]["failure"] == "submission-rejected"
+    assert delivery.submissions == [("runpod", 1000)]
+
+
+def test_missing_remote_id_still_promotes_stored_result(delivery):
+    delivery.state.skip = True
+    delivery.state.remote_bad = True
+    delivery.state.backend_ready = {"modal": 3}
+    assert delivery.deliver() == "modal"
+    assert "remote_id" not in delivery.saved.route["attempts"]["modal"]
+    ambiguous = [fields for event, fields in delivery.events if event == "glue.provider.ambiguous"]
+    assert ambiguous == [{"provider": "modal", "reason": "missing-remote-id"}]
+
+
+def test_result_lookup_failure_defers_to_redelivery(delivery):
+    delivery.state.skip = True
+    delivery.state.lookup_fail = True
+    with pytest.raises(RuntimeError, match="Verified audio lookup must be retried"):
+        delivery.deliver()
+    attempts = delivery.saved.route["attempts"]
+    assert attempts and all("failure" not in attempt for attempt in attempts.values())
+
+
+def test_winner_promotion_conflict_defers_to_redelivery(delivery):
+    delivery.state.skip = True
+    delivery.state.backend_ready = {"modal": 3}
+    delivery.objects[cascade.raw_response_key(delivery.job)] = (b"someone else's audio", {})
+    with pytest.raises(RuntimeError, match="conflicts with the canonical raw response"):
+        delivery.deliver()
+
+
+def test_hedge_input_storage_failure_keeps_modal(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", "12")
+    delivery.state.skip = True
+    delivery.state.hedge_storage_fail = True
+    delivery.state.backend_ready = {"modal": 30}
+    assert delivery.deliver() == "modal"
+    assert delivery.saved.route["runpod_skip"] == "input-storage-unavailable"
+    assert delivery.submissions == [("modal", 1000)]
