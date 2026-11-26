@@ -464,6 +464,7 @@ describe("Glue deployment environment variables", () => {
     expect(content).toContain("SOW_GLUE_SQS_QUEUE_URL=");
     expect(content).toContain("SOW_GLUE_AWS_REGION=");
     expect(content).toContain("SOW_ELEVENLABS_API_KEY=");
+    expect(content).toContain("SOW_GLUE_PROVIDER=");
   });
 
   it("Glue queue URL region matches the region used to sign sends", () => {

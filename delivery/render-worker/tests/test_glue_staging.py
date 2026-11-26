@@ -341,6 +341,58 @@ class TestPrepareStagedTake:
             )
         assert "minimum audio level" in str(exc_info.value.detail)
 
+    def test_cascade_winner_drives_take_geometry_and_backend(self):
+        raw = _response_bytes()
+        a_frames, b_frames = round(1.7 * SR), round(2.3 * SR)
+        attempt = {
+            "model": "acestep-v15-base",
+            "upstream_revision": "u" * 40,
+            "checkpoint_revision": "c" * 40,
+            "search_source": "incoming_mix",
+            "seed": 123456,
+            "a_frames": a_frames,
+            "fill_frames": int(GENERATION_SECONDS * SR),
+            "b_frames": b_frames,
+            "guide_frames": int(GENERATION_SECONDS * SR),
+        }
+        context = {
+            "version": 2,
+            "provider": "cascade",
+            "attempts": {"modal": attempt},
+            "winner": {
+                "backend": "modal",
+                "model": "acestep-v15-base",
+                "result_key": "glue-simdps-tmp/42/job/seam.pcm",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "bytes": len(raw),
+            },
+        }
+        job = _job(provider_context_json=context)
+        assert glue_staging._take_provider(job) == ("modal", attempt)
+        prepared = prepare_staged_take(
+            raw,
+            job=job,
+            descriptor=_descriptor(),
+            items={"item-a": _items()[0], "item-b": _items()[1]},
+        )
+        # Side geometry comes from the recorded attempt frames, not the descriptor
+        # (2.0 s / 2.0 s) or the catalog durations.
+        assert prepared.metrics["aRefSeconds"] == pytest.approx(1.7, abs=1e-3)
+        assert prepared.metrics["bRefSeconds"] == pytest.approx(2.3, abs=1e-3)
+        assert prepared.metrics["responseFrames"] == a_frames + attempt["fill_frames"] + b_frames
+        assert prepared.metrics["generationShortfallMs"] == 0
+        assert prepared.seconds == pytest.approx(GENERATION_SECONDS, abs=1e-3)
+        assert prepared.status == "ok"
+        # A redelivery whose catalog fetch failed must stage identical bytes.
+        redelivered = prepare_staged_take(
+            raw,
+            job=job,
+            descriptor=_descriptor(),
+            items={"item-a": _items()[0], "item-b": _items()[1]},
+            reference=_reference_from_response(raw),
+        )
+        assert redelivered.wav_bytes == prepared.wav_bytes
+
 
 class TestFinalizeStaging:
     def test_compose_success_stages_a_ready_take_and_selects_it(self, harness):
