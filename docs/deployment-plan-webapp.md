@@ -1,5 +1,7 @@
 # Stream of Worship Webapp — Deployment Plan
 
+> **Status:** superseded by [deployment-plan-webapp-v2.md](deployment-plan-webapp-v2.md). Production runs the render worker as a Lambda container image from private ECR; no EC2 instance and no ECS cluster, service, or task definition is provisioned. The EC2/ECS material below, including the "Docker + ECS support" AMI note in §3.2, is historical.
+
 ## 1. Architecture Overview
 
 ```

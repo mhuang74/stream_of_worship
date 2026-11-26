@@ -9,12 +9,13 @@ This document contains technical details for developers and contributors. For us
 1. [Project Status](#project-status)
 2. [Architecture Overview](#architecture-overview)
 3. [Backend Services](#backend-services)
-4. [POC Analysis Setup](#poc-analysis-setup)
-5. [Project Structure](#project-structure)
-6. [Development Roadmap](#development-roadmap)
-7. [Advanced Configuration](#advanced-configuration)
-8. [Troubleshooting](#troubleshooting)
-9. [Agent Skills](#agent-skills)
+4. [Deployment Topology](#deployment-topology)
+5. [POC Analysis Setup](#poc-analysis-setup)
+6. [Project Structure](#project-structure)
+7. [Development Roadmap](#development-roadmap)
+8. [Advanced Configuration](#advanced-configuration)
+9. [Troubleshooting](#troubleshooting)
+10. [Agent Skills](#agent-skills)
 
 ---
 
@@ -377,6 +378,24 @@ AWS Lambda container that processes render jobs from an SQS queue.
 - **Status:** Operational
 
 **Documentation:** [delivery/render-worker/README.md](delivery/render-worker/README.md)
+
+---
+
+## Deployment Topology
+
+Where each container image is built, stored, and run. Only Lambda consumes an AWS registry; the GPU worker is pulled by non-AWS providers from GHCR.
+
+| Component | Compute target | Image | Registry, tag, and pull | Shipped by |
+|-----------|----------------|-------|-------------------------|------------|
+| Render Worker | AWS Lambda `sow-render-worker`, us-west-2 | `delivery/render-worker/Dockerfile` on `public.ecr.aws/lambda/python:3.13` | private ECR `sow-render-worker` (`762288208920.dkr.ecr.us-west-2.amazonaws.com`), tag = commit SHA | `.github/workflows/deploy.yml`; `aws lambda update-function-code` |
+| Glue Worker | AWS Lambda `sow-glue-worker-standard`, us-west-2 | same render-worker image | same private ECR image and tag | `.github/workflows/deploy.yml` (reuses the render-worker job output `image`) |
+| SimDPS Worker | Modal app `sow-glue-simdps` and a private RunPod serverless endpoint | `delivery/simdps-worker/Dockerfile` on `nvidia/cuda:12.8.1-runtime-ubuntu22.04`, ACE-Step weights baked in (`HF_HUB_OFFLINE=1`) | GHCR `ghcr.io/<owner>/<repo>-simdps-worker` (derived from `GITHUB_REPOSITORY`; currently `ghcr.io/mhuang74/stream_of_worship-simdps-worker`), tag = commit SHA, deployed by `@sha256:…` digest | `.github/workflows/build-simdps-worker.yml`; the operator deploys the digest per `docs/glue-operator-runbook.md` |
+| Analysis Service | self-hosted Docker Compose (`ops/analysis-service/docker-compose.yml`) | `ops/analysis-service/Dockerfile` | no CI publish; `SOW_ANALYSIS_IMAGE` names any registry (the deployment guide uses a `ghcr.io/your-org/sow-analysis` placeholder) | manual |
+| Analysis ML workers | Modal apps in `ops/analysis-service/modal_apps/` | `modal.Image.debian_slim(...)` plus one `Image.from_registry(...)` | Modal's own image store | `modal deploy` per app |
+
+**Why the split.** Lambda accepts container images only from a private ECR repository in the function's region: public ECR URIs and other registries are rejected, and `UpdateFunctionCode` additionally rejects OCI image indexes and attestations (hence the schema2 build flags in `.github/workflows/deploy.yml`). The SimDPS image never runs on AWS — RunPod and Modal both pull any OCI registry by digest, and GHCR authenticates with the workflow's `GITHUB_TOKEN` (`permissions: packages: write`) instead of AWS IAM, so neither GPU provider needs ECR pull credentials. [INFERENCE: no ADR or doc records the GHCR-over-ECR decision; the mechanisms above are the documented facts.]
+
+**ECS is not used.** No ECS cluster, service, or task definition exists in `.github/workflows/`, `delivery/`, or `ops/`; nothing calls `aws ecs`. Production render/Glue compute is Lambda, and Glue/SimDPS GPU compute is Modal plus RunPod. `docs/deployment-plan-webapp.md` (EC2 Spot, "Docker + ECS support" AMI note) is superseded by v2, and the AWS Fargate block in `docs/deployment-plan-webapp-v2.md` is an unimplemented fallback if 1080p renders outgrow Lambda's 15-minute limit.
 
 ---
 
