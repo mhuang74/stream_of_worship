@@ -31,7 +31,7 @@ from sow_render_worker.glue_provider import (
     generation_duration_ms,
     raw_response_key,
 )
-from sow_render_worker.glue_staging import validate_generated_level
+from sow_render_worker.glue_staging import set_read_timeout, validate_generated_level
 from sow_render_worker.r2_client import create_r2_client_from_env
 from sow_render_worker.simdps_audio import (
     CHECKPOINT_REVISION,
@@ -97,8 +97,7 @@ def _read_chunk(body, size, deadline):
     available = deadline - time.monotonic()
     if available <= 0:
         raise TimeoutError("SimDPS R2 read timed out")
-    if hasattr(body, "set_socket_timeout"):
-        body.set_socket_timeout(min(5, available))
+    set_read_timeout(body, min(5, available))
     return body.read(size)
 
 

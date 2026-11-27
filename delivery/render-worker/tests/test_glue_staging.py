@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -261,6 +262,80 @@ def _log(state):
         state["events"].append((event, fields))
 
     return log
+
+
+class ReleasedSocketBody:
+    """Streaming body whose socket lookup fails once the bytes are exhausted.
+
+    botocore reaches the socket through urllib3 internals, and urllib3 releases
+    the connection at end of body, so ``set_socket_timeout`` raises
+    ``AttributeError`` exactly like a production R2 read.
+    """
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+        self.reads = 0
+
+    def set_socket_timeout(self, _seconds):
+        if self._offset >= len(self._data):
+            raise AttributeError("'NoneType' object has no attribute 'raw'")
+
+    def read(self, size=-1):
+        self.reads += 1
+        remaining = self._data[self._offset :]
+        chunk = remaining if size < 0 else remaining[:size]
+        self._offset += len(chunk)
+        return chunk
+
+    def close(self):
+        self._data = self._data[:0]
+
+
+class ReleasedSocketClient:
+    def __init__(self, data: bytes):
+        self.data = data
+        self.bodies: list[ReleasedSocketBody] = []
+
+    def get_object(self, **kwargs):
+        body = ReleasedSocketBody(self.data)
+        self.bodies.append(body)
+        return {"Body": body}
+
+    def put_object(self, **kwargs):
+        return {}
+
+
+class TestR2StagingStore:
+    def _store(self, data: bytes):
+        client = ReleasedSocketClient(data)
+        return (
+            glue_staging.R2StagingStore(
+                SimpleNamespace(bucket_name="bucket", client=client),
+                deadline=time.monotonic() + 30,
+            ),
+            client,
+        )
+
+    def test_read_raw_verifies_bytes_after_the_socket_is_released(self):
+        raw = _response_bytes()
+        store, client = self._store(raw)
+        job = SimpleNamespace(
+            raw_response_r2_key="glue/raw.pcm",
+            raw_response_sha256=hashlib.sha256(raw).hexdigest(),
+            raw_response_bytes=len(raw),
+        )
+
+        assert store.read_raw(job) == raw
+        assert client.bodies[0].reads > 1
+
+    def test_put_take_verifies_the_stored_bytes_after_the_socket_is_released(self):
+        wav = _response_bytes()
+        store, client = self._store(wav)
+
+        store.put_take("glue/take.wav", wav)
+
+        assert len(client.bodies) == 1
 
 
 class TestPrepareStagedTake:
