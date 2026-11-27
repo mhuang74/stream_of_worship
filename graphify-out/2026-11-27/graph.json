@@ -82,6 +82,19 @@
       "source_location": "L12"
     },
     {
+      "id": "delivery_webapp_src_lib_db_songs_recordinginfo",
+      "label": "RecordingInfo",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "recordinginfo",
+      "source_file": "delivery/webapp/src/lib/db/songs.ts",
+      "source_location": "L42"
+    },
+    {
       "id": "delivery_webapp_src_lib_db_songsets_createsongseterrorresult",
       "label": "CreateSongsetErrorResult",
       "_callable": true,
@@ -132,6 +145,19 @@
       "norm_label": "glueselectionerror",
       "source_file": "delivery/webapp/src/lib/db/songsets.ts",
       "source_location": "L1618"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_songsets_publicsongsetitem",
+      "label": "PublicSongsetItem",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "publicsongsetitem",
+      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
+      "source_location": "L67"
     },
     {
       "id": "delivery_webapp_src_lib_db_songsets_relationalsongsetitem",
@@ -251,6 +277,19 @@
       "source_location": "L313"
     },
     {
+      "id": "delivery_webapp_src_lib_db_songsets_songsetitemrecording",
+      "label": "SongsetItemRecording",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "songsetitemrecording",
+      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
+      "source_location": "L293"
+    },
+    {
       "id": "delivery_webapp_src_lib_db_songsets_songsetlistitem",
       "label": "SongsetListItem",
       "_callable": true,
@@ -365,6 +404,19 @@
       "file_type": "code",
       "norm_label": "gluestalechangedetail",
       "source_file": "delivery/webapp/src/lib/glue/stale.ts",
+      "source_location": "L13"
+    },
+    {
+      "id": "delivery_webapp_src_lib_music_effective_key_effectivekey",
+      "label": "EffectiveKey",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "effectivekey",
+      "source_file": "delivery/webapp/src/lib/music/effective-key.ts",
       "source_location": "L13"
     },
     {
@@ -638,7 +690,7 @@
       "file_type": "code",
       "norm_label": "fakeeventsource",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L40"
+      "source_location": "L41"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_harness",
@@ -651,7 +703,7 @@
       "file_type": "code",
       "norm_label": "harness",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L190"
+      "source_location": "L191"
     },
     {
       "id": "delivery_webapp_src_test_hooks_usegluejob_test_fakeeventsource",
@@ -1213,6 +1265,19 @@
       "source_location": "L17"
     },
     {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_apifatalerror",
+      "label": "ApiFatalError",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "code",
+      "norm_label": "apifatalerror",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L140"
+    },
+    {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_planoptions",
       "label": "PlanOptions",
       "_callable": true,
@@ -1460,19 +1525,6 @@
       "source_location": "L184"
     },
     {
-      "id": "delivery_webapp_src_lib_db_songs_recordinginfo",
-      "label": "RecordingInfo",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 13,
-      "community_name": "songs.ts",
-      "file_type": "code",
-      "norm_label": "recordinginfo",
-      "source_file": "delivery/webapp/src/lib/db/songs.ts",
-      "source_location": "L42"
-    },
-    {
       "id": "delivery_webapp_src_lib_db_songs_searchsongsresult",
       "label": "SearchSongsResult",
       "_callable": true,
@@ -1536,45 +1588,6 @@
       "norm_label": "songwithrecordings",
       "source_file": "delivery/webapp/src/lib/db/songs.ts",
       "source_location": "L17"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_songsets_publicsongsetitem",
-      "label": "PublicSongsetItem",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 13,
-      "community_name": "songs.ts",
-      "file_type": "code",
-      "norm_label": "publicsongsetitem",
-      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
-      "source_location": "L67"
-    },
-    {
-      "id": "delivery_webapp_src_lib_db_songsets_songsetitemrecording",
-      "label": "SongsetItemRecording",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 13,
-      "community_name": "songs.ts",
-      "file_type": "code",
-      "norm_label": "songsetitemrecording",
-      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
-      "source_location": "L293"
-    },
-    {
-      "id": "delivery_webapp_src_lib_music_effective_key_effectivekey",
-      "label": "EffectiveKey",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 13,
-      "community_name": "songs.ts",
-      "file_type": "code",
-      "norm_label": "effectivekey",
-      "source_file": "delivery/webapp/src/lib/music/effective-key.ts",
-      "source_location": "L13"
     },
     {
       "id": "delivery_webapp_src_lib_music_effective_key_effectivekeyinput",
@@ -2667,32 +2680,6 @@
       "norm_label": "presentationstatus",
       "source_file": "delivery/webapp/src/types/presentation-api.d.ts",
       "source_location": "L22"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_configerror",
-      "label": "ConfigError",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "configerror",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L5"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig",
-      "label": "RenderWorkerConfig",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "renderworkerconfig",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L10"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_db_glueexcerpt",
@@ -3962,7 +3949,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "diffentry",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -3975,7 +3962,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "evaluationscores",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -3988,7 +3975,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "evaluationstats",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -5942,7 +5929,7 @@
       "file_type": "code",
       "norm_label": "gluesampler",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L34"
+      "source_location": "L40"
     },
     {
       "id": "lab_poc_scripts_modal_apps_simdps_inpaint_app_simdpsinpaint",
@@ -7453,6 +7440,19 @@
       "source_location": "L343"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable",
+      "label": "ComponentMetadataTable",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 262,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "componentmetadatatable",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L315"
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_youtube_transcriptdraft",
       "label": "TranscriptDraft",
       "_callable": true,
@@ -7542,19 +7542,6 @@
       "norm_label": "componentheropanel",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L176"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable",
-      "label": "ComponentMetadataTable",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": "componentmetadatatable",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L315"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_playbackbar",
@@ -7797,7 +7784,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "code",
       "norm_label": "lrcword",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -8116,19 +8103,6 @@
       "source_location": "L71"
     },
     {
-      "id": "delivery_webapp_src_app_api_signed_url_shared_handler_signedurlparams",
-      "label": "SignedUrlParams",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "schema.ts",
-      "file_type": "code",
-      "norm_label": "signedurlparams",
-      "source_file": "delivery/webapp/src/app/api/signed-url/shared-handler.ts",
-      "source_location": "L12"
-    },
-    {
       "id": "delivery_webapp_src_lib_db_discovery_discoveryaggrow",
       "label": "DiscoveryAggRow",
       "_callable": true,
@@ -8166,19 +8140,6 @@
       "norm_label": "discoverysong",
       "source_file": "delivery/webapp/src/lib/db/discovery.ts",
       "source_location": "L9"
-    },
-    {
-      "id": "delivery_webapp_src_lib_r2_client_signedurloptions",
-      "label": "SignedUrlOptions",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "schema.ts",
-      "file_type": "code",
-      "norm_label": "signedurloptions",
-      "source_file": "delivery/webapp/src/lib/r2/client.ts",
-      "source_location": "L29"
     },
     {
       "id": "delivery_webapp_src_test_api_songsets_containing_song_test_chain",
@@ -9910,19 +9871,6 @@
       "source_location": "L16"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_apifatalerror",
-      "label": "ApiFatalError",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 403,
-      "community_name": "ApiFatalError",
-      "file_type": "code",
-      "norm_label": "apifatalerror",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L140"
-    },
-    {
       "id": "delivery_webapp_src_lib_db_songsets_songsetrendermetrics",
       "label": "SongsetRenderMetrics",
       "_callable": true,
@@ -10506,6 +10454,32 @@
       "norm_label": "alignment",
       "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
       "source_location": "L930"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_config_configerror",
+      "label": "ConfigError",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "configerror",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L5"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig",
+      "label": "RenderWorkerConfig",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "renderworkerconfig",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L10"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_youtube_youtubevideometadata",
@@ -12406,6 +12380,19 @@
       "source_location": "L3"
     },
     {
+      "id": "delivery_webapp_src_app_api_signed_url_shared_handler_signedurlparams",
+      "label": "SignedUrlParams",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "signedurlparams",
+      "source_file": "delivery/webapp/src/app/api/signed-url/shared-handler.ts",
+      "source_location": "L12"
+    },
+    {
       "id": "delivery_webapp_src_app_api_songs_id_route_routeparams",
       "label": "RouteParams",
       "_callable": true,
@@ -12495,6 +12482,19 @@
       "norm_label": "r2config",
       "source_file": "delivery/webapp/src/lib/r2/client.ts",
       "source_location": "L21"
+    },
+    {
+      "id": "delivery_webapp_src_lib_r2_client_signedurloptions",
+      "label": "SignedUrlOptions",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "signedurloptions",
+      "source_file": "delivery/webapp/src/lib/r2/client.ts",
+      "source_location": "L29"
     },
     {
       "id": "delivery_webapp_src_lib_r2_client_signedurlresult",
@@ -15761,18 +15761,6 @@
       "source_location": "L15"
     },
     {
-      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route_post",
-      "label": "POST()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "db/songsets.ts",
-      "file_type": "code",
-      "norm_label": "post()",
-      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
-      "source_location": "L15"
-    },
-    {
       "id": "delivery_webapp_src_app_api_songsets_id_items_route_delete",
       "label": "DELETE()",
       "_callable": true,
@@ -16337,18 +16325,6 @@
       "source_location": "L2381"
     },
     {
-      "id": "delivery_webapp_src_lib_db_songsets_reordersongsetitems",
-      "label": "reorderSongsetItems()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "db/songsets.ts",
-      "file_type": "code",
-      "norm_label": "reordersongsetitems()",
-      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
-      "source_location": "L2117"
-    },
-    {
       "id": "delivery_webapp_src_lib_db_songsets_reportgluerenderpreflight",
       "label": "reportGlueRenderPreflight()",
       "_callable": true,
@@ -16467,6 +16443,30 @@
       "norm_label": "validateglueselectionforpatch()",
       "source_file": "delivery/webapp/src/lib/db/songsets.ts",
       "source_location": "L1665"
+    },
+    {
+      "id": "delivery_webapp_src_lib_glue_quote_loadglueitemrows",
+      "label": "loadGlueItemRows()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "loadglueitemrows()",
+      "source_file": "delivery/webapp/src/lib/glue/quote.ts",
+      "source_location": "L309"
+    },
+    {
+      "id": "delivery_webapp_src_lib_glue_quote_normalizegluebeats",
+      "label": "normalizeGlueBeats()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 1,
+      "community_name": "db/songsets.ts",
+      "file_type": "code",
+      "norm_label": "normalizegluebeats()",
+      "source_file": "delivery/webapp/src/lib/glue/quote.ts",
+      "source_location": "L373"
     },
     {
       "id": "delivery_webapp_src_lib_glue_resolve_loadresolvedgluejunctions",
@@ -18518,7 +18518,7 @@
       "file_type": "code",
       "norm_label": ".close()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L52"
+      "source_location": "L53"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_fakeeventsource_constructor",
@@ -18530,7 +18530,7 @@
       "file_type": "code",
       "norm_label": ".constructor()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L47"
+      "source_location": "L48"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_fakeeventsource_emit",
@@ -18542,7 +18542,7 @@
       "file_type": "code",
       "norm_label": ".emit()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L56"
+      "source_location": "L57"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_installfetch",
@@ -18554,7 +18554,7 @@
       "file_type": "code",
       "norm_label": "installfetch()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L208"
+      "source_location": "L209"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_jobstatus",
@@ -18566,7 +18566,7 @@
       "file_type": "code",
       "norm_label": "jobstatus()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L164"
+      "source_location": "L165"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_jsonresponse",
@@ -18578,7 +18578,7 @@
       "file_type": "code",
       "norm_label": "jsonresponse()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L200"
+      "source_location": "L201"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_junction",
@@ -18590,7 +18590,7 @@
       "file_type": "code",
       "norm_label": "junction()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L67"
+      "source_location": "L68"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_makeitem",
@@ -18602,7 +18602,7 @@
       "file_type": "code",
       "norm_label": "makeitem()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L92"
+      "source_location": "L93"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_rendersheet",
@@ -18614,7 +18614,7 @@
       "file_type": "code",
       "norm_label": "rendersheet()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L274"
+      "source_location": "L275"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_successor",
@@ -18626,7 +18626,7 @@
       "file_type": "code",
       "norm_label": "successor()",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L129"
+      "source_location": "L130"
     },
     {
       "id": "delivery_webapp_src_test_hooks_usegluejob_test_fakeeventsource_close",
@@ -20993,6 +20993,18 @@
       "source_location": "L1864"
     },
     {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_api_headers",
+      "label": "_api_headers()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "code",
+      "norm_label": "_api_headers()",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L605"
+    },
+    {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_audio_duration_seconds",
       "label": "audio_duration_seconds()",
       "_callable": true,
@@ -21041,6 +21053,18 @@
       "source_location": "L448"
     },
     {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_compose",
+      "label": "compose()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "code",
+      "norm_label": "compose()",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L683"
+    },
+    {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_dry_run",
       "label": "dry_run()",
       "_callable": true,
@@ -21051,6 +21075,30 @@
       "norm_label": "dry_run()",
       "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
       "source_location": "L1973"
+    },
+    {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_entitlement_message",
+      "label": "_entitlement_message()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "code",
+      "norm_label": "_entitlement_message()",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L609"
+    },
+    {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_fatal_from_response",
+      "label": "_fatal_from_response()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "code",
+      "norm_label": "_fatal_from_response()",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L618"
     },
     {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_glue_chunk",
@@ -21471,6 +21519,18 @@
       "norm_label": "refine_vad_segments_with_silence()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L1025"
+    },
+    {
+      "id": "lab_poc_scripts_eval_lrc_run_vad_segmentation",
+      "label": "run_vad_segmentation()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "PinyinWord",
+      "file_type": "code",
+      "norm_label": "run_vad_segmentation()",
+      "source_file": "lab/poc-scripts/eval_lrc.py",
+      "source_location": "L951"
     },
     {
       "id": "lab_poc_scripts_eval_lrc_transcribe_audio",
@@ -23223,6 +23283,18 @@
       "norm_label": "embedquery()",
       "source_file": "delivery/webapp/src/lib/embedding.ts",
       "source_location": "L29"
+    },
+    {
+      "id": "delivery_webapp_src_lib_glue_jobs_releasereservationifreservedsql",
+      "label": "releaseReservationIfReservedSql()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 13,
+      "community_name": "songs.ts",
+      "file_type": "code",
+      "norm_label": "releasereservationifreservedsql()",
+      "source_file": "delivery/webapp/src/lib/glue/jobs.ts",
+      "source_location": "L442"
     },
     {
       "id": "delivery_webapp_src_lib_music_effective_key_audiopasses",
@@ -26069,42 +26141,6 @@
       "source_location": "L74"
     },
     {
-      "id": "delivery_render_worker_src_sow_render_worker_config_load_config",
-      "label": "load_config()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "load_config()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L47"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_from_env",
-      "label": ".from_env()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": ".from_env()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L27"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_has_elevenlabs_key",
-      "label": ".has_elevenlabs_key()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": ".has_elevenlabs_key()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L22"
-    },
-    {
       "id": "delivery_render_worker_src_sow_render_worker_db_claim_glue_job",
       "label": "claim_glue_job()",
       "_callable": true,
@@ -26163,18 +26199,6 @@
       "norm_label": "finish_glue_job_ready()",
       "source_file": "delivery/render-worker/src/sow_render_worker/db.py",
       "source_location": "L1336"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_db_get_connection",
-      "label": "get_connection()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "get_connection()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/db.py",
-      "source_location": "L346"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_db_get_glue_excerpt",
@@ -26499,54 +26523,6 @@
       "norm_label": "_uuid_str()",
       "source_file": "delivery/render-worker/src/sow_render_worker/db.py",
       "source_location": "L121"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_handler",
-      "label": "handler()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "handler()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L124"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_parse_record",
-      "label": "_parse_record()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "_parse_record()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L18"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_process_record",
-      "label": "_process_record()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "_process_record()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L63"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_verify_glue_message",
-      "label": "_verify_glue_message()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "_verify_glue_message()",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L30"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_pipeline_execute_render_pipeline",
@@ -28829,30 +28805,6 @@
       "source_location": "L283"
     },
     {
-      "id": "delivery_webapp_src_lib_glue_quote_loadglueitemrows",
-      "label": "loadGlueItemRows()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "resolve.ts",
-      "file_type": "code",
-      "norm_label": "loadglueitemrows()",
-      "source_file": "delivery/webapp/src/lib/glue/quote.ts",
-      "source_location": "L309"
-    },
-    {
-      "id": "delivery_webapp_src_lib_glue_quote_normalizegluebeats",
-      "label": "normalizeGlueBeats()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 15,
-      "community_name": "resolve.ts",
-      "file_type": "code",
-      "norm_label": "normalizegluebeats()",
-      "source_file": "delivery/webapp/src/lib/glue/quote.ts",
-      "source_location": "L373"
-    },
-    {
       "id": "delivery_webapp_src_lib_glue_quote_quoteerrorforreason",
       "label": "quoteErrorForReason()",
       "_callable": true,
@@ -30454,7 +30406,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "align_sequences()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30466,7 +30418,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "align_sequences_per_line()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30478,7 +30430,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "calculate_final_score()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30490,7 +30442,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "calculate_pinyin_accuracy()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30502,7 +30454,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "calculate_text_score()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30514,7 +30466,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "calculate_time_offset()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30526,7 +30478,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "calculate_timing_score()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -30538,23 +30490,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "evaluate_lrc()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L2348"
-    },
-    {
-      "id": "lab_poc_scripts_eval_lrc_normalize_pinyin",
-      "label": "normalize_pinyin()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 154,
-      "community_name": "eval_lrc.py",
-      "file_type": "code",
-      "norm_label": "normalize_pinyin()",
-      "source_file": "lab/poc-scripts/eval_lrc.py",
-      "source_location": "L295"
     },
     {
       "id": "lab_poc_scripts_eval_lrc_normalize_time_offset",
@@ -30562,7 +30502,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "code",
       "norm_label": "normalize_time_offset()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -33742,7 +33682,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "log()",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -33754,23 +33694,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "generate_all_transitions()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L993"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
-      "label": "generate_transition_filename()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 171,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_transition_filename()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_load_all_song_sections",
@@ -33778,7 +33706,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "load_all_song_sections()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -33790,23 +33718,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "main()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1424"
-    },
-    {
-      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
-      "label": "parse_args()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 171,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "parse_args()",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1366"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_print_summary_report",
@@ -33814,7 +33730,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "print_summary_report()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -33826,7 +33742,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "save_summary_csv()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -33838,7 +33754,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "save_transitions_index()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -33850,7 +33766,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "code",
       "norm_label": "select_transition_candidates()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -44018,7 +43934,7 @@
       "file_type": "code",
       "norm_label": ".load()",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L36"
+      "source_location": "L42"
     },
     {
       "id": "delivery_simdps_worker_modal_app_gluesampler_sample",
@@ -44030,7 +43946,7 @@
       "file_type": "code",
       "norm_label": ".sample()",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L42"
+      "source_location": "L48"
     },
     {
       "id": "lab_poc_scripts_modal_apps_simdps_inpaint_app_decode_flac",
@@ -45915,6 +45831,18 @@
       "norm_label": "_is_ws_or_punct()",
       "source_file": "ops/analysis-service/src/sow_analysis/workers/cps.py",
       "source_location": "L23"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_lyrics_recordingcontenthash_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 239,
+      "community_name": "arrangements.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/lyrics/[recordingContentHash]/route.ts",
+      "source_location": "L21"
     },
     {
       "id": "delivery_webapp_src_hooks_usesonglyrics_clearlyricscache",
@@ -49145,18 +49073,6 @@
       "source_location": "L1347"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_jump_to_component",
-      "label": ".action_jump_to_component()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "code",
-      "norm_label": ".action_jump_to_component()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1269"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_next_song",
       "label": ".action_next_song()",
       "_callable": true,
@@ -49229,18 +49145,6 @@
       "source_location": "L1527"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_toggle_playback_for_component",
-      "label": ".action_toggle_playback_for_component()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "code",
-      "norm_label": ".action_toggle_playback_for_component()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1236"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_cancel_row_edit",
       "label": "._cancel_row_edit()",
       "_callable": true,
@@ -49253,16 +49157,16 @@
       "source_location": "L891"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_check_component_playback_end",
-      "label": "._check_component_playback_end()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_cell_value",
+      "label": "._cell_value()",
       "_callable": true,
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._check_component_playback_end()",
+      "norm_label": "._cell_value()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L743"
+      "source_location": "L558"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_focus_active_panel",
@@ -49275,6 +49179,18 @@
       "norm_label": "._focus_active_panel()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L1163"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_format_cell_value",
+      "label": "._format_cell_value()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 262,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "._format_cell_value()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L566"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_guard_active_edit",
@@ -49313,30 +49229,6 @@
       "source_location": "L859"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_finished",
-      "label": "._on_playback_finished()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "code",
-      "norm_label": "._on_playback_finished()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L799"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_position",
-      "label": "._on_playback_position()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "code",
-      "norm_label": "._on_playback_position()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L770"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_resize",
       "label": ".on_resize()",
       "_callable": true,
@@ -49361,16 +49253,16 @@
       "source_location": "L543"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_editor_role",
-      "label": "._selected_editor_role()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_refresh_table_cell",
+      "label": "._refresh_table_cell()",
       "_callable": true,
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._selected_editor_role()",
+      "norm_label": "._refresh_table_cell()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L804"
+      "source_location": "L588"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_field_key",
@@ -49397,40 +49289,52 @@
       "source_location": "L898"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_lyrics_highlight",
-      "label": "._update_lyrics_highlight()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_cursor_down",
+      "label": ".action_cursor_down()",
       "_callable": true,
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._update_lyrics_highlight()",
+      "norm_label": ".action_cursor_down()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L775"
+      "source_location": "L324"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_playback_bar",
-      "label": "._update_playback_bar()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_cursor_up",
+      "label": ".action_cursor_up()",
       "_callable": true,
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._update_playback_bar()",
+      "norm_label": ".action_cursor_up()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L761"
+      "source_location": "L318"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_validate_numeric_field",
-      "label": "._validate_numeric_field()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_page_down",
+      "label": ".action_page_down()",
       "_callable": true,
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "code",
-      "norm_label": "._validate_numeric_field()",
+      "norm_label": ".action_page_down()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L931"
+      "source_location": "L336"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_page_up",
+      "label": ".action_page_up()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 262,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": ".action_page_up()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L330"
     },
     {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_audio",
@@ -49901,66 +49805,6 @@
       "source_location": "L472"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_state",
-      "label": "._on_playback_state()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": "._on_playback_state()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L796"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_cursor_down",
-      "label": ".action_cursor_down()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": ".action_cursor_down()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L324"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_cursor_up",
-      "label": ".action_cursor_up()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": ".action_cursor_up()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L318"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_page_down",
-      "label": ".action_page_down()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": ".action_page_down()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L336"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componentmetadatatable_action_page_up",
-      "label": ".action_page_up()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": ".action_page_up()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L330"
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_playbackbar_init",
       "label": ".__init__()",
       "_callable": true,
@@ -49971,18 +49815,6 @@
       "norm_label": ".__init__()",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L146"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_playbackbar_update_playback",
-      "label": ".update_playback()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": ".update_playback()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L152"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_songbreadcrumb_init",
@@ -51814,7 +51646,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "code",
       "norm_label": "extract_lrc_lines()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -51826,11 +51658,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "code",
       "norm_label": "interpolate_word_times()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L397"
+    },
+    {
+      "id": "lab_poc_scripts_eval_lrc_normalize_pinyin",
+      "label": "normalize_pinyin()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 291,
+      "community_name": "eval_lrc.py",
+      "file_type": "code",
+      "norm_label": "normalize_pinyin()",
+      "source_file": "lab/poc-scripts/eval_lrc.py",
+      "source_location": "L295"
     },
     {
       "id": "lab_poc_scripts_eval_lrc_parse_enhanced_lrc_line",
@@ -51838,7 +51682,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "code",
       "norm_label": "parse_enhanced_lrc_line()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -51850,7 +51694,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "code",
       "norm_label": "parse_lrc_file()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -53021,6 +52865,18 @@
       "source_location": "L391"
     },
     {
+      "id": "delivery_webapp_src_app_api_discovery_route_get",
+      "label": "GET()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 30,
+      "community_name": "schema.ts",
+      "file_type": "code",
+      "norm_label": "get()",
+      "source_file": "delivery/webapp/src/app/api/discovery/route.ts",
+      "source_location": "L8"
+    },
+    {
       "id": "delivery_webapp_src_app_api_lyrics_marks_route_delete",
       "label": "DELETE()",
       "_callable": true,
@@ -53115,6 +52971,42 @@
       "norm_label": "get()",
       "source_file": "delivery/webapp/src/app/api/offline/cache/route.ts",
       "source_location": "L15"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_discovery_listdiscoverysongs",
+      "label": "listDiscoverySongs()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 30,
+      "community_name": "schema.ts",
+      "file_type": "code",
+      "norm_label": "listdiscoverysongs()",
+      "source_file": "delivery/webapp/src/lib/db/discovery.ts",
+      "source_location": "L44"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_discovery_route_test_createmockrequest",
+      "label": "createMockRequest()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 30,
+      "community_name": "schema.ts",
+      "file_type": "code",
+      "norm_label": "createmockrequest()",
+      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
+      "source_location": "L21"
+    },
+    {
+      "id": "delivery_webapp_src_test_api_discovery_route_test_makesong",
+      "label": "makeSong()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 30,
+      "community_name": "schema.ts",
+      "file_type": "code",
+      "norm_label": "makesong()",
+      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
+      "source_location": "L31"
     },
     {
       "id": "delivery_webapp_src_test_api_lyrics_marks_test_makerequest",
@@ -53499,18 +53391,6 @@
       "norm_label": "merge_vad_segments()",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L986"
-    },
-    {
-      "id": "lab_poc_scripts_eval_lrc_run_vad_segmentation",
-      "label": "run_vad_segmentation()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 302,
-      "community_name": "VADSegment",
-      "file_type": "code",
-      "norm_label": "run_vad_segmentation()",
-      "source_file": "lab/poc-scripts/eval_lrc.py",
-      "source_location": "L951"
     },
     {
       "id": "lab_poc_scripts_eval_lrc_vadsegment_duration_seconds",
@@ -54394,7 +54274,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_all_variants()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -54406,7 +54286,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_drum_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -54418,7 +54298,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_medium_silence_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -54430,11 +54310,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_medium_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L202"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_generate_transition_filename",
+      "label": "generate_transition_filename()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 314,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_transition_filename()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L130"
     },
     {
       "id": "lab_poc_scripts_generate_section_transitions_generate_vocal_fade_transition",
@@ -54442,7 +54334,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "generate_vocal_fade_transition()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -54454,11 +54346,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "code",
       "norm_label": "load_stems_for_section()",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L73"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_parse_args",
+      "label": "parse_args()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 314,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "parse_args()",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1366"
     },
     {
       "id": "delivery_android_app_src_test_java_org_streamofworship_android_feature_settings_settingsscreentest_fakesettingsscreenrepository_getsettings",
@@ -60557,52 +60461,136 @@
       "source_location": "L22"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_api_headers",
-      "label": "_api_headers()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_jump_to_component",
+      "label": ".action_jump_to_component()",
       "_callable": true,
       "_origin": "ast",
       "community": 403,
-      "community_name": "ApiFatalError",
+      "community_name": "._selected_editor_role",
       "file_type": "code",
-      "norm_label": "_api_headers()",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L605"
+      "norm_label": ".action_jump_to_component()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1269"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_compose",
-      "label": "compose()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_action_toggle_playback_for_component",
+      "label": ".action_toggle_playback_for_component()",
       "_callable": true,
       "_origin": "ast",
       "community": 403,
-      "community_name": "ApiFatalError",
+      "community_name": "._selected_editor_role",
       "file_type": "code",
-      "norm_label": "compose()",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L683"
+      "norm_label": ".action_toggle_playback_for_component()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1236"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_entitlement_message",
-      "label": "_entitlement_message()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_check_component_playback_end",
+      "label": "._check_component_playback_end()",
       "_callable": true,
       "_origin": "ast",
       "community": 403,
-      "community_name": "ApiFatalError",
+      "community_name": "._selected_editor_role",
       "file_type": "code",
-      "norm_label": "_entitlement_message()",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L609"
+      "norm_label": "._check_component_playback_end()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L743"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_fatal_from_response",
-      "label": "_fatal_from_response()",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_finished",
+      "label": "._on_playback_finished()",
       "_callable": true,
       "_origin": "ast",
       "community": 403,
-      "community_name": "ApiFatalError",
+      "community_name": "._selected_editor_role",
       "file_type": "code",
-      "norm_label": "_fatal_from_response()",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L618"
+      "norm_label": "._on_playback_finished()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L799"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_position",
+      "label": "._on_playback_position()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._on_playback_position()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L770"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_on_playback_state",
+      "label": "._on_playback_state()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._on_playback_state()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L796"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_selected_editor_role",
+      "label": "._selected_editor_role()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._selected_editor_role()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L804"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_lyrics_highlight",
+      "label": "._update_lyrics_highlight()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._update_lyrics_highlight()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L775"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_update_playback_bar",
+      "label": "._update_playback_bar()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._update_playback_bar()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L761"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_validate_numeric_field",
+      "label": "._validate_numeric_field()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "._validate_numeric_field()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L931"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_playbackbar_update_playback",
+      "label": ".update_playback()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": ".update_playback()",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L152"
     },
     {
       "id": "lab_poc_scripts_compare_asr_backends_compute_character_accuracy",
@@ -64337,40 +64325,100 @@
       "source_location": "L877"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_cell_value",
-      "label": "._cell_value()",
+      "id": "delivery_render_worker_src_sow_render_worker_config_load_config",
+      "label": "load_config()",
       "_callable": true,
       "_origin": "ast",
       "community": 500,
-      "community_name": "._cell_value",
+      "community_name": "lambda_handler.py",
       "file_type": "code",
-      "norm_label": "._cell_value()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L558"
+      "norm_label": "load_config()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L47"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_format_cell_value",
-      "label": "._format_cell_value()",
+      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_from_env",
+      "label": ".from_env()",
       "_callable": true,
       "_origin": "ast",
       "community": 500,
-      "community_name": "._cell_value",
+      "community_name": "lambda_handler.py",
       "file_type": "code",
-      "norm_label": "._format_cell_value()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L566"
+      "norm_label": ".from_env()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L27"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_componenteditorscreen_refresh_table_cell",
-      "label": "._refresh_table_cell()",
+      "id": "delivery_render_worker_src_sow_render_worker_config_renderworkerconfig_has_elevenlabs_key",
+      "label": ".has_elevenlabs_key()",
       "_callable": true,
       "_origin": "ast",
       "community": 500,
-      "community_name": "._cell_value",
+      "community_name": "lambda_handler.py",
       "file_type": "code",
-      "norm_label": "._refresh_table_cell()",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L588"
+      "norm_label": ".has_elevenlabs_key()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L22"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_db_get_connection",
+      "label": "get_connection()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "get_connection()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/db.py",
+      "source_location": "L346"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_handler",
+      "label": "handler()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "handler()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L124"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_parse_record",
+      "label": "_parse_record()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "_parse_record()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L18"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_process_record",
+      "label": "_process_record()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "_process_record()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L63"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_verify_glue_message",
+      "label": "_verify_glue_message()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "_verify_glue_message()",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L30"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_services_youtube_extract_video_metadata",
@@ -72317,18 +72365,6 @@
       "source_location": "L166"
     },
     {
-      "id": "delivery_webapp_src_app_api_discovery_route_get",
-      "label": "GET()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/discovery/route.ts",
-      "source_location": "L8"
-    },
-    {
       "id": "delivery_webapp_src_app_api_favorites_songid_route_delete",
       "label": "DELETE()",
       "_callable": true,
@@ -72351,18 +72387,6 @@
       "norm_label": "get()",
       "source_file": "delivery/webapp/src/app/api/glues/[takeId]/audio/route.ts",
       "source_location": "L23"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_lyrics_recordingcontenthash_route_get",
-      "label": "GET()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "get()",
-      "source_file": "delivery/webapp/src/app/api/lyrics/[recordingContentHash]/route.ts",
-      "source_location": "L21"
     },
     {
       "id": "delivery_webapp_src_app_api_r2_artifact_path_route_get",
@@ -72461,6 +72485,18 @@
       "source_location": "L9"
     },
     {
+      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route_post",
+      "label": "POST()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "post()",
+      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
+      "source_location": "L15"
+    },
+    {
       "id": "delivery_webapp_src_app_api_transitions_preview_route_post",
       "label": "POST()",
       "_callable": true,
@@ -72485,18 +72521,6 @@
       "source_location": "L12"
     },
     {
-      "id": "delivery_webapp_src_lib_db_discovery_listdiscoverysongs",
-      "label": "listDiscoverySongs()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "listdiscoverysongs()",
-      "source_file": "delivery/webapp/src/lib/db/discovery.ts",
-      "source_location": "L44"
-    },
-    {
       "id": "delivery_webapp_src_lib_db_favorites_removefavorite",
       "label": "removeFavorite()",
       "_callable": true,
@@ -72519,6 +72543,18 @@
       "norm_label": "getalbums()",
       "source_file": "delivery/webapp/src/lib/db/songs.ts",
       "source_location": "L529"
+    },
+    {
+      "id": "delivery_webapp_src_lib_db_songsets_reordersongsetitems",
+      "label": "reorderSongsetItems()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "reordersongsetitems()",
+      "source_file": "delivery/webapp/src/lib/db/songsets.ts",
+      "source_location": "L2117"
     },
     {
       "id": "delivery_webapp_src_lib_email_client_fromaddress",
@@ -72591,30 +72627,6 @@
       "norm_label": "creater2clientfromenv()",
       "source_file": "delivery/webapp/src/lib/r2/client.ts",
       "source_location": "L237"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_discovery_route_test_createmockrequest",
-      "label": "createMockRequest()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "createmockrequest()",
-      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
-      "source_location": "L21"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_discovery_route_test_makesong",
-      "label": "makeSong()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "makesong()",
-      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
-      "source_location": "L31"
     },
     {
       "id": "delivery_webapp_src_test_api_favorites_songid_test_mockrequest",
@@ -74295,18 +74307,6 @@
       "norm_label": "redispatchgluejob()",
       "source_file": "delivery/webapp/src/lib/glue/jobs.ts",
       "source_location": "L1263"
-    },
-    {
-      "id": "delivery_webapp_src_lib_glue_jobs_releasereservationifreservedsql",
-      "label": "releaseReservationIfReservedSql()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 8,
-      "community_name": "jobs.ts",
-      "file_type": "code",
-      "norm_label": "releasereservationifreservedsql()",
-      "source_file": "delivery/webapp/src/lib/glue/jobs.ts",
-      "source_location": "L442"
     },
     {
       "id": "delivery_webapp_src_lib_glue_jobs_resumegluejob",
@@ -82894,28 +82894,6 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route",
-      "label": "reorder/route.ts",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "db/songsets.ts",
-      "file_type": "code",
-      "norm_label": "reorder/route.ts",
-      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route_reorderschema",
-      "label": "reorderSchema",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "db/songsets.ts",
-      "file_type": "code",
-      "norm_label": "reorderschema",
-      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
-      "source_location": "L6"
-    },
-    {
       "id": "delivery_webapp_src_app_api_songsets_id_items_route",
       "label": "items/route.ts",
       "_origin": "ast",
@@ -85355,7 +85333,7 @@
       "file_type": "code",
       "norm_label": "beats",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L65"
+      "source_location": "L66"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_quote",
@@ -85366,7 +85344,7 @@
       "file_type": "code",
       "norm_label": "quote",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L146"
+      "source_location": "L147"
     },
     {
       "id": "delivery_webapp_src_test_components_arrangement_editor_glue_jobs_test_sections",
@@ -85377,7 +85355,7 @@
       "file_type": "code",
       "norm_label": "sections",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L64"
+      "source_location": "L65"
     },
     {
       "id": "delivery_webapp_src_test_hooks_usegluejob_test",
@@ -88493,6 +88471,17 @@
       "source_location": "L1"
     },
     {
+      "id": "lab_poc_scripts_gen_glue_elevenlabs_rationale_141",
+      "label": "An ElevenLabs response that no retry can fix (entitlement, copyright, bad plan,\u2026",
+      "_origin": "ast",
+      "community": 12,
+      "community_name": "gen_glue_elevenlabs.py",
+      "file_type": "rationale",
+      "norm_label": "an elevenlabs response that no retry can fix (entitlement, copyright, bad plan,...",
+      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
+      "source_location": "L141"
+    },
+    {
       "id": "lab_poc_scripts_gen_glue_elevenlabs_rationale_1974",
       "label": "Print the junction take tables and plan bodies without touching Postgres, R2 or\u2026",
       "_origin": "ast",
@@ -89162,6 +89151,17 @@
       "norm_label": "transcribe audio using the specified engine. args: audio_path: path to audio...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L886"
+    },
+    {
+      "id": "lab_poc_scripts_eval_lrc_rationale_955",
+      "label": "Run Voice Activity Detection to segment audio. Uses FunASR fsmn-vad model to\u2026",
+      "_origin": "ast",
+      "community": 122,
+      "community_name": "PinyinWord",
+      "file_type": "rationale",
+      "norm_label": "run voice activity detection to segment audio. uses funasr fsmn-vad model to...",
+      "source_file": "lab/poc-scripts/eval_lrc.py",
+      "source_location": "L955"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_composeresult",
@@ -92970,28 +92970,6 @@
       "source_location": ""
     },
     {
-      "id": "delivery_render_worker_src_sow_render_worker_config",
-      "label": "sow_render_worker/config.py",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "sow_render_worker/config.py",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_py_exception",
-      "label": "Exception",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "exception",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "delivery_render_worker_src_sow_render_worker_db",
       "label": "sow_render_worker/db.py",
       "_origin": "ast",
@@ -93034,17 +93012,6 @@
       "norm_label": "datetime",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler",
-      "label": "lambda_handler.py",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "code",
-      "norm_label": "lambda_handler.py",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L1"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_pipeline",
@@ -93144,17 +93111,6 @@
       "norm_label": "songsetitem",
       "source_file": "",
       "source_location": ""
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_config_rationale_23",
-      "label": "True when a provider key is configured for paid Glue stages.",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "rationale",
-      "norm_label": "true when a provider key is configured for paid glue stages.",
-      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
-      "source_location": "L23"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_db_rationale_1069",
@@ -93320,17 +93276,6 @@
       "norm_label": "advance a contacted job using the heartbeat as its delivery lease.",
       "source_file": "delivery/render-worker/src/sow_render_worker/db.py",
       "source_location": "L999"
-    },
-    {
-      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_rationale_31",
-      "label": "Verify the message identity against the stored job before any work. Returns\u2026",
-      "_origin": "ast",
-      "community": 139,
-      "community_name": "pipeline.py",
-      "file_type": "rationale",
-      "norm_label": "verify the message identity against the stored job before any work. returns...",
-      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
-      "source_location": "L31"
     },
     {
       "id": "delivery_render_worker_src_sow_render_worker_pipeline_rationale_129",
@@ -96647,22 +96592,11 @@
       "source_location": "L174"
     },
     {
-      "id": "lab_poc_scripts_eval_lrc",
-      "label": "eval_lrc.py",
-      "_origin": "ast",
-      "community": 154,
-      "community_name": "eval_lrc.py",
-      "file_type": "code",
-      "norm_label": "eval_lrc.py",
-      "source_file": "lab/poc-scripts/eval_lrc.py",
-      "source_location": "L1"
-    },
-    {
       "id": "lab_poc_scripts_eval_lrc_rationale_123",
       "label": "A single entry in the diff result. Attributes: op: Operation type ('equal',\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "a single entry in the diff result. attributes: op: operation type ('equal',...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96673,7 +96607,7 @@
       "label": "Align LRC and audio word sequences using SequenceMatcher. Args: lrc_words: LRC\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "align lrc and audio word sequences using sequencematcher. args: lrc_words: lrc...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96684,7 +96618,7 @@
       "label": "Statistics from the evaluation. Attributes: lrc_word_count: Total words in LRC\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "statistics from the evaluation. attributes: lrc_word_count: total words in lrc...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96695,7 +96629,7 @@
       "label": "Align LRC and audio word sequences per line. Instead of global alignment, this\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "align lrc and audio word sequences per line. instead of global alignment, this...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96706,7 +96640,7 @@
       "label": "Calculate the global time offset between audio and LRC timestamps. Uses median\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "calculate the global time offset between audio and lrc timestamps. uses median...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96717,7 +96651,7 @@
       "label": "Normalize diff entries by subtracting the global time offset. This removes the\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "normalize diff entries by subtracting the global time offset. this removes the...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96728,7 +96662,7 @@
       "label": "Calculate text accuracy score (F1-like). Args: diff: List of diff entries\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "calculate text accuracy score (f1-like). args: diff: list of diff entries...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96739,7 +96673,7 @@
       "label": "Scores from the evaluation. Attributes: text_accuracy: Text accuracy score\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "scores from the evaluation. attributes: text_accuracy: text accuracy score...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96750,7 +96684,7 @@
       "label": "Calculate timing accuracy score. Args: diff: List of diff entries threshold_ms:\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "calculate timing accuracy score. args: diff: list of diff entries threshold_ms:...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96761,7 +96695,7 @@
       "label": "Calculate weighted final score. Args: text_score: Text accuracy score (0-100)\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "calculate weighted final score. args: text_score: text accuracy score (0-100)...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96772,7 +96706,7 @@
       "label": "Calculate pinyin-level accuracy with homophone analysis. This compares pinyin\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "calculate pinyin-level accuracy with homophone analysis. this compares pinyin...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -96783,22 +96717,11 @@
       "label": "Run full LRC evaluation. Args: lrc_words: Parsed LRC pinyin words audio_words:\u2026",
       "_origin": "ast",
       "community": 154,
-      "community_name": "eval_lrc.py",
+      "community_name": "evaluate_lrc",
       "file_type": "rationale",
       "norm_label": "run full lrc evaluation. args: lrc_words: parsed lrc pinyin words audio_words:...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L2358"
-    },
-    {
-      "id": "lab_poc_scripts_eval_lrc_rationale_296",
-      "label": "Normalize pinyin for comparison. Args: pinyin: Pinyin string Returns:\u2026",
-      "_origin": "ast",
-      "community": 154,
-      "community_name": "eval_lrc.py",
-      "file_type": "rationale",
-      "norm_label": "normalize pinyin for comparison. args: pinyin: pinyin string returns:...",
-      "source_file": "lab/poc-scripts/eval_lrc.py",
-      "source_location": "L296"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_editor_screen_py_datatable",
@@ -99717,18 +99640,6 @@
       "source_location": "L40"
     },
     {
-      "id": "ops_analysis_service_readme_api_endpoints",
-      "label": "API Endpoints",
-      "_origin": "ast",
-      "community": 161,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "api endpoints",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L175"
-    },
-    {
       "id": "ops_analysis_service_readme_architecture",
       "label": "Architecture",
       "_origin": "ast",
@@ -99765,18 +99676,6 @@
       "source_location": "L553"
     },
     {
-      "id": "ops_analysis_service_readme_check_job_status",
-      "label": "Check Job Status",
-      "_origin": "ast",
-      "community": 161,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "check job status",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L267"
-    },
-    {
       "id": "ops_analysis_service_readme_component_analysis_v5",
       "label": "Component Analysis (v5)",
       "_origin": "ast",
@@ -99787,6 +99686,18 @@
       "norm_label": "component analysis (v5)",
       "source_file": "ops/analysis-service/README.md",
       "source_location": "L525"
+    },
+    {
+      "id": "ops_analysis_service_readme_dashscope_qwen3_asr_setup_optional",
+      "label": "DashScope Qwen3 ASR Setup (Optional)",
+      "_origin": "ast",
+      "community": 161,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "dashscope qwen3 asr setup (optional)",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L436"
     },
     {
       "id": "ops_analysis_service_readme_development",
@@ -99835,6 +99746,30 @@
       "norm_label": "forced alignment on modal",
       "source_file": "ops/analysis-service/README.md",
       "source_location": "L342"
+    },
+    {
+      "id": "ops_analysis_service_readme_get_an_api_key",
+      "label": "Get an API Key",
+      "_origin": "ast",
+      "community": 161,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "get an api key",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L440"
+    },
+    {
+      "id": "ops_analysis_service_readme_how_it_works",
+      "label": "How It Works",
+      "_origin": "ast",
+      "community": 161,
+      "community_name": "Stream of Worship - Analysis Service",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "how it works",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L450"
     },
     {
       "id": "ops_analysis_service_readme_license",
@@ -99945,40 +99880,16 @@
       "source_location": "L1"
     },
     {
-      "id": "ops_analysis_service_readme_submit_analysis_job",
-      "label": "Submit Analysis Job",
+      "id": "ops_analysis_service_readme_tuning",
+      "label": "Tuning",
       "_origin": "ast",
       "community": 161,
       "community_name": "Stream of Worship - Analysis Service",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "submit analysis job",
+      "norm_label": "tuning",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L188"
-    },
-    {
-      "id": "ops_analysis_service_readme_submit_lrc_generation_job",
-      "label": "Submit LRC Generation Job",
-      "_origin": "ast",
-      "community": 161,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "submit lrc generation job",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L204"
-    },
-    {
-      "id": "ops_analysis_service_readme_submit_stem_separation_job",
-      "label": "Submit Stem Separation Job",
-      "_origin": "ast",
-      "community": 161,
-      "community_name": "Stream of Worship - Analysis Service",
-      "file_type": "document",
-      "node_kind": "heading",
-      "norm_label": "submit stem separation job",
-      "source_file": "ops/analysis-service/README.md",
-      "source_location": "L223"
+      "source_location": "L460"
     },
     {
       "id": "ops_analysis_service_readme_v5_options_opt_in",
@@ -101545,22 +101456,11 @@
       "source_location": "L20"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions",
-      "label": "generate_section_transitions.py",
-      "_origin": "ast",
-      "community": 171,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "code",
-      "norm_label": "generate_section_transitions.py",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1"
-    },
-    {
       "id": "lab_poc_scripts_analyze_sections_rationale_69",
       "label": "Print message if verbose mode is enabled.",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "print message if verbose mode is enabled.",
       "source_file": "lab/poc-scripts/analyze_sections.py",
@@ -101571,7 +101471,7 @@
       "label": "Save master transitions index (v2.0) - single source of truth. Args:\u2026",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "save master transitions index (v2.0) - single source of truth. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -101582,51 +101482,29 @@
       "label": "Save summary CSV for quick reference (v2.0). Exports flattened view of\u2026",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "save summary csv for quick reference (v2.0). exports flattened view of...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1267"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
-      "label": "Create descriptive filename for section transition audio. Format:\u2026",
-      "_origin": "ast",
-      "community": 171,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "create descriptive filename for section transition audio. format:...",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L131"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1312",
       "label": "Print final summary report (v2.1).",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "print final summary report (v2.1).",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
       "source_location": "L1312"
     },
     {
-      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
-      "label": "Parse command-line arguments.",
-      "_origin": "ast",
-      "community": 171,
-      "community_name": "generate_section_transitions.py",
-      "file_type": "rationale",
-      "norm_label": "parse command-line arguments.",
-      "source_file": "lab/poc-scripts/generate_section_transitions.py",
-      "source_location": "L1367"
-    },
-    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_1425",
       "label": "Main execution function.",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "main execution function.",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -101637,7 +101515,7 @@
       "label": "Filter compatible section pairs worthy of transition generation. Args:\u2026",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "filter compatible section pairs worthy of transition generation. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -101648,7 +101526,7 @@
       "label": "Load all song sections from allin1 analysis. Optimization: First checks for\u2026",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "load all song sections from allin1 analysis. optimization: first checks for...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -101659,7 +101537,7 @@
       "label": "Generate all section transition audio files for candidate pairs (v2.1). This\u2026",
       "_origin": "ast",
       "community": 171,
-      "community_name": "generate_section_transitions.py",
+      "community_name": "log",
       "file_type": "rationale",
       "norm_label": "generate all section transition audio files for candidate pairs (v2.1). this...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -120412,6 +120290,28 @@
       "source_location": "L1"
     },
     {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_any",
+      "label": "Any",
+      "_origin": "ast",
+      "community": 262,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "any",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_datatable",
+      "label": "DataTable",
+      "_origin": "ast",
+      "community": 262,
+      "community_name": "ComponentEditorScreen",
+      "file_type": "code",
+      "norm_label": "datatable",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_resize",
       "label": "Resize",
       "_origin": "ast",
@@ -120434,15 +120334,15 @@
       "source_location": "L1099"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_1237",
-      "label": "Play or pause the song, anchored to the highlighted component. - If playing:\u2026",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_316",
+      "label": "Component metadata table with edit-guard-aware row navigation.",
       "_origin": "ast",
       "community": 262,
       "community_name": "ComponentEditorScreen",
       "file_type": "rationale",
-      "norm_label": "play or pause the song, anchored to the highlighted component. - if playing:...",
+      "norm_label": "component metadata table with edit-guard-aware row navigation.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L1237"
+      "source_location": "L316"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_344",
@@ -120454,39 +120354,6 @@
       "norm_label": "main interactive component metadata editor screen (v4). provides: - song...",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L344"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_744",
-      "label": "Pause playback if the position has reached the selected component's end_time.\u2026",
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "rationale",
-      "norm_label": "pause playback if the position has reached the selected component's end_time....",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L744"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_776",
-      "label": "v6. Update the lyrics panel's current-line highlight based on playback\u2026",
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "rationale",
-      "norm_label": "v6. update the lyrics panel's current-line highlight based on playback...",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L776"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_805",
-      "label": "Return the editor-level role key for the currently highlighted table row.",
-      "_origin": "ast",
-      "community": 262,
-      "community_name": "ComponentEditorScreen",
-      "file_type": "rationale",
-      "norm_label": "return the editor-level role key for the currently highlighted table row.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L805"
     },
     {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_813",
@@ -120970,17 +120837,6 @@
       "source_location": ""
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_datatable",
-      "label": "DataTable",
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": "datatable",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_playbackservice",
       "label": "PlaybackService",
       "_origin": "ast",
@@ -120988,17 +120844,6 @@
       "community_name": ".compose",
       "file_type": "code",
       "norm_label": "playbackservice",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_playbackstate",
-      "label": "PlaybackState",
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "code",
-      "norm_label": "playbackstate",
       "source_file": "",
       "source_location": ""
     },
@@ -121067,17 +120912,6 @@
       "norm_label": "dirty / autosave / song-index / r2-pending status indicator.",
       "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
       "source_location": "L281"
-    },
-    {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_316",
-      "label": "Component metadata table with edit-guard-aware row navigation.",
-      "_origin": "ast",
-      "community": 268,
-      "community_name": ".compose",
-      "file_type": "rationale",
-      "norm_label": "component metadata table with edit-guard-aware row navigation.",
-      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
-      "source_location": "L316"
     },
     {
       "id": "lab_legacy_cli_tui_scripts_generate_lrc",
@@ -124430,11 +124264,33 @@
       "source_location": "L26"
     },
     {
+      "id": "lab_poc_scripts_eval_lrc",
+      "label": "eval_lrc.py",
+      "_origin": "ast",
+      "community": 291,
+      "community_name": "eval_lrc.py",
+      "file_type": "code",
+      "norm_label": "eval_lrc.py",
+      "source_file": "lab/poc-scripts/eval_lrc.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_eval_lrc_rationale_296",
+      "label": "Normalize pinyin for comparison. Args: pinyin: Pinyin string Returns:\u2026",
+      "_origin": "ast",
+      "community": 291,
+      "community_name": "eval_lrc.py",
+      "file_type": "rationale",
+      "norm_label": "normalize pinyin for comparison. args: pinyin: pinyin string returns:...",
+      "source_file": "lab/poc-scripts/eval_lrc.py",
+      "source_location": "L296"
+    },
+    {
       "id": "lab_poc_scripts_eval_lrc_rationale_318",
       "label": "A single word from LRC with timestamp. Attributes: text: Word text\u2026",
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "rationale",
       "norm_label": "a single word from lrc with timestamp. attributes: text: word text...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -124445,7 +124301,7 @@
       "label": "Parse an enhanced LRC line with optional word-level timestamps. Supports\u2026",
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "rationale",
       "norm_label": "parse an enhanced lrc line with optional word-level timestamps. supports...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -124456,7 +124312,7 @@
       "label": "Interpolate timestamps for words in a line. Distributes time evenly across\u2026",
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "rationale",
       "norm_label": "interpolate timestamps for words in a line. distributes time evenly across...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -124467,7 +124323,7 @@
       "label": "Parse LRC file content into PinyinWord list. Args: content: LRC file content\u2026",
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "rationale",
       "norm_label": "parse lrc file content into pinyinword list. args: content: lrc file content...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -124478,7 +124334,7 @@
       "label": "Extract original LRC lines with timestamps. Args: content: LRC file content\u2026",
       "_origin": "ast",
       "community": 291,
-      "community_name": "parse_lrc_file",
+      "community_name": "eval_lrc.py",
       "file_type": "rationale",
       "norm_label": "extract original lrc lines with timestamps. args: content: lrc file content...",
       "source_file": "lab/poc-scripts/eval_lrc.py",
@@ -125825,6 +125681,17 @@
       "source_location": ""
     },
     {
+      "id": "delivery_webapp_src_app_api_discovery_route",
+      "label": "discovery/route.ts",
+      "_origin": "ast",
+      "community": 30,
+      "community_name": "schema.ts",
+      "file_type": "code",
+      "norm_label": "discovery/route.ts",
+      "source_file": "delivery/webapp/src/app/api/discovery/route.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_app_api_lyrics_marks_route",
       "label": "marks/route.ts",
       "_origin": "ast",
@@ -125889,17 +125756,6 @@
       "norm_label": "no_cache_headers",
       "source_file": "delivery/webapp/src/app/api/share/[token]/route.ts",
       "source_location": "L14"
-    },
-    {
-      "id": "delivery_webapp_src_app_api_signed_url_shared_handler",
-      "label": "shared-handler.ts",
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "schema.ts",
-      "file_type": "code",
-      "norm_label": "shared-handler.ts",
-      "source_file": "delivery/webapp/src/app/api/signed-url/shared-handler.ts",
-      "source_location": "L1"
     },
     {
       "id": "delivery_webapp_src_db_index",
@@ -126342,26 +126198,15 @@
       "source_location": "L1"
     },
     {
-      "id": "delivery_webapp_src_lib_r2_client_cast_playback_expires_in_seconds",
-      "label": "CAST_PLAYBACK_EXPIRES_IN_SECONDS",
+      "id": "delivery_webapp_src_test_api_discovery_route_test",
+      "label": "discovery/route.test.ts",
       "_origin": "ast",
       "community": 30,
       "community_name": "schema.ts",
       "file_type": "code",
-      "norm_label": "cast_playback_expires_in_seconds",
-      "source_file": "delivery/webapp/src/lib/r2/client.ts",
-      "source_location": "L19"
-    },
-    {
-      "id": "delivery_webapp_src_lib_r2_client_default_expires_in_seconds",
-      "label": "DEFAULT_EXPIRES_IN_SECONDS",
-      "_origin": "ast",
-      "community": 30,
-      "community_name": "schema.ts",
-      "file_type": "code",
-      "norm_label": "default_expires_in_seconds",
-      "source_file": "delivery/webapp/src/lib/r2/client.ts",
-      "source_location": "L11"
+      "norm_label": "discovery/route.test.ts",
+      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
+      "source_location": "L1"
     },
     {
       "id": "delivery_webapp_src_test_api_lyrics_marks_test",
@@ -126978,17 +126823,6 @@
       "norm_label": "start time in seconds.",
       "source_file": "lab/poc-scripts/eval_lrc.py",
       "source_location": "L229"
-    },
-    {
-      "id": "lab_poc_scripts_eval_lrc_rationale_955",
-      "label": "Run Voice Activity Detection to segment audio. Uses FunASR fsmn-vad model to\u2026",
-      "_origin": "ast",
-      "community": 302,
-      "community_name": "VADSegment",
-      "file_type": "rationale",
-      "norm_label": "run voice activity detection to segment audio. uses funasr fsmn-vad model to...",
-      "source_file": "lab/poc-scripts/eval_lrc.py",
-      "source_location": "L955"
     },
     {
       "id": "lab_poc_scripts_eval_lrc_rationale_991",
@@ -128189,11 +128023,44 @@
       "source_location": "L139"
     },
     {
+      "id": "lab_poc_scripts_generate_section_transitions",
+      "label": "generate_section_transitions.py",
+      "_origin": "ast",
+      "community": 314,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "code",
+      "norm_label": "generate_section_transitions.py",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_131",
+      "label": "Create descriptive filename for section transition audio. Format:\u2026",
+      "_origin": "ast",
+      "community": 314,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "create descriptive filename for section transition audio. format:...",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L131"
+    },
+    {
+      "id": "lab_poc_scripts_generate_section_transitions_rationale_1367",
+      "label": "Parse command-line arguments.",
+      "_origin": "ast",
+      "community": 314,
+      "community_name": "generate_section_transitions.py",
+      "file_type": "rationale",
+      "norm_label": "parse command-line arguments.",
+      "source_file": "lab/poc-scripts/generate_section_transitions.py",
+      "source_location": "L1367"
+    },
+    {
       "id": "lab_poc_scripts_generate_section_transitions_rationale_203",
       "label": "Create medium transition: Full section A + crossfade + Full section B. Args:\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create medium transition: full section a + crossfade + full section b. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -128204,7 +128071,7 @@
       "label": "Create medium transition with silence gap between sections. Algorithm: 1. Load\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create medium transition with silence gap between sections. algorithm: 1. load...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -128215,7 +128082,7 @@
       "label": "Create vocal-fade transition: sections connected by vocal-only bridge with\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create vocal-fade transition: sections connected by vocal-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -128226,7 +128093,7 @@
       "label": "Create drum-fade transition: sections connected by drum-only bridge with\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "create drum-fade transition: sections connected by drum-only bridge with...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -128237,7 +128104,7 @@
       "label": "Load all 4 stems (bass, drums, other, vocals) for a specific section. Args:\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "load all 4 stems (bass, drums, other, vocals) for a specific section. args:...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -128248,7 +128115,7 @@
       "label": "Generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)\u2026",
       "_origin": "ast",
       "community": 314,
-      "community_name": "generate_all_variants",
+      "community_name": "generate_section_transitions.py",
       "file_type": "rationale",
       "norm_label": "generate all variants (medium-crossfade, medium-silence, vocal-fade, drum-fade)...",
       "source_file": "lab/poc-scripts/generate_section_transitions.py",
@@ -135744,15 +135611,59 @@
       "source_location": "L1"
     },
     {
-      "id": "lab_poc_scripts_gen_glue_elevenlabs_rationale_141",
-      "label": "An ElevenLabs response that no retry can fix (entitlement, copyright, bad plan,\u2026",
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_playbackstate",
+      "label": "PlaybackState",
       "_origin": "ast",
       "community": 403,
-      "community_name": "ApiFatalError",
+      "community_name": "._selected_editor_role",
+      "file_type": "code",
+      "norm_label": "playbackstate",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_1237",
+      "label": "Play or pause the song, anchored to the highlighted component. - If playing:\u2026",
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
       "file_type": "rationale",
-      "norm_label": "an elevenlabs response that no retry can fix (entitlement, copyright, bad plan,...",
-      "source_file": "lab/poc-scripts/gen_glue_elevenlabs.py",
-      "source_location": "L141"
+      "norm_label": "play or pause the song, anchored to the highlighted component. - if playing:...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L1237"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_744",
+      "label": "Pause playback if the position has reached the selected component's end_time.\u2026",
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "rationale",
+      "norm_label": "pause playback if the position has reached the selected component's end_time....",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L744"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_776",
+      "label": "v6. Update the lyrics panel's current-line highlight based on playback\u2026",
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "rationale",
+      "norm_label": "v6. update the lyrics panel's current-line highlight based on playback...",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L776"
+    },
+    {
+      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_rationale_805",
+      "label": "Return the editor-level role key for the currently highlighted table row.",
+      "_origin": "ast",
+      "community": 403,
+      "community_name": "._selected_editor_role",
+      "file_type": "rationale",
+      "norm_label": "return the editor-level role key for the currently highlighted table row.",
+      "source_file": "ops/admin-cli/src/stream_of_worship/admin/component_editor/screen.py",
+      "source_location": "L805"
     },
     {
       "id": "lab_poc_scripts_compare_asr_backends",
@@ -140654,15 +140565,59 @@
       "source_location": "L978"
     },
     {
-      "id": "ops_admin_cli_src_stream_of_worship_admin_component_editor_screen_py_any",
-      "label": "Any",
+      "id": "delivery_render_worker_src_sow_render_worker_config",
+      "label": "sow_render_worker/config.py",
       "_origin": "ast",
       "community": 500,
-      "community_name": "._cell_value",
+      "community_name": "lambda_handler.py",
       "file_type": "code",
-      "norm_label": "any",
+      "norm_label": "sow_render_worker/config.py",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_config_py_exception",
+      "label": "Exception",
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "exception",
       "source_file": "",
       "source_location": ""
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler",
+      "label": "lambda_handler.py",
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "code",
+      "norm_label": "lambda_handler.py",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_config_rationale_23",
+      "label": "True when a provider key is configured for paid Glue stages.",
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "rationale",
+      "norm_label": "true when a provider key is configured for paid glue stages.",
+      "source_file": "delivery/render-worker/src/sow_render_worker/config.py",
+      "source_location": "L23"
+    },
+    {
+      "id": "delivery_render_worker_src_sow_render_worker_lambda_handler_rationale_31",
+      "label": "Verify the message identity against the stored job before any work. Returns\u2026",
+      "_origin": "ast",
+      "community": 500,
+      "community_name": "lambda_handler.py",
+      "file_type": "rationale",
+      "norm_label": "verify the message identity against the stored job before any work. returns...",
+      "source_file": "delivery/render-worker/src/sow_render_worker/lambda_handler.py",
+      "source_location": "L31"
     },
     {
       "id": "developer_alternative_all_in_one_deep_learning_analysis",
@@ -140759,52 +140714,64 @@
       "source_location": "L36"
     },
     {
-      "id": "ops_analysis_service_readme_dashscope_qwen3_asr_setup_optional",
-      "label": "DashScope Qwen3 ASR Setup (Optional)",
+      "id": "ops_analysis_service_readme_api_endpoints",
+      "label": "API Endpoints",
       "_origin": "ast",
       "community": 503,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
+      "community_name": "API Endpoints",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "dashscope qwen3 asr setup (optional)",
+      "norm_label": "api endpoints",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L436"
+      "source_location": "L175"
     },
     {
-      "id": "ops_analysis_service_readme_get_an_api_key",
-      "label": "Get an API Key",
+      "id": "ops_analysis_service_readme_check_job_status",
+      "label": "Check Job Status",
       "_origin": "ast",
       "community": 503,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
+      "community_name": "API Endpoints",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "get an api key",
+      "norm_label": "check job status",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L440"
+      "source_location": "L267"
     },
     {
-      "id": "ops_analysis_service_readme_how_it_works",
-      "label": "How It Works",
+      "id": "ops_analysis_service_readme_submit_analysis_job",
+      "label": "Submit Analysis Job",
       "_origin": "ast",
       "community": 503,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
+      "community_name": "API Endpoints",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "how it works",
+      "norm_label": "submit analysis job",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L450"
+      "source_location": "L188"
     },
     {
-      "id": "ops_analysis_service_readme_tuning",
-      "label": "Tuning",
+      "id": "ops_analysis_service_readme_submit_lrc_generation_job",
+      "label": "Submit LRC Generation Job",
       "_origin": "ast",
       "community": 503,
-      "community_name": "DashScope Qwen3 ASR Setup (Optional)",
+      "community_name": "API Endpoints",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "tuning",
+      "norm_label": "submit lrc generation job",
       "source_file": "ops/analysis-service/README.md",
-      "source_location": "L460"
+      "source_location": "L204"
+    },
+    {
+      "id": "ops_analysis_service_readme_submit_stem_separation_job",
+      "label": "Submit Stem Separation Job",
+      "_origin": "ast",
+      "community": 503,
+      "community_name": "API Endpoints",
+      "file_type": "document",
+      "node_kind": "heading",
+      "norm_label": "submit stem separation job",
+      "source_file": "ops/analysis-service/README.md",
+      "source_location": "L223"
     },
     {
       "id": "lab_poc_scripts_transition_builder_v2_app_utils_config_py_path",
@@ -148968,17 +148935,6 @@
       "source_location": "L4"
     },
     {
-      "id": "delivery_webapp_src_app_api_discovery_route",
-      "label": "discovery/route.ts",
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "discovery/route.ts",
-      "source_file": "delivery/webapp/src/app/api/discovery/route.ts",
-      "source_location": "L1"
-    },
-    {
       "id": "delivery_webapp_src_app_api_favorites_songid_route",
       "label": "[songId]/route.ts",
       "_origin": "ast",
@@ -149089,6 +149045,17 @@
       "source_location": "L6"
     },
     {
+      "id": "delivery_webapp_src_app_api_signed_url_shared_handler",
+      "label": "shared-handler.ts",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "shared-handler.ts",
+      "source_file": "delivery/webapp/src/app/api/signed-url/shared-handler.ts",
+      "source_location": "L1"
+    },
+    {
       "id": "delivery_webapp_src_app_api_songs_albums_route",
       "label": "albums/route.ts",
       "_origin": "ast",
@@ -149109,6 +149076,28 @@
       "norm_label": "songs/[id]/route.ts",
       "source_file": "delivery/webapp/src/app/api/songs/[id]/route.ts",
       "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route",
+      "label": "reorder/route.ts",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "reorder/route.ts",
+      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "delivery_webapp_src_app_api_songsets_id_items_reorder_route_reorderschema",
+      "label": "reorderSchema",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "reorderschema",
+      "source_file": "delivery/webapp/src/app/api/songsets/[id]/items/reorder/route.ts",
+      "source_location": "L6"
     },
     {
       "id": "delivery_webapp_src_app_api_transitions_preview_route",
@@ -149199,6 +149188,28 @@
       "source_location": "L1"
     },
     {
+      "id": "delivery_webapp_src_lib_r2_client_cast_playback_expires_in_seconds",
+      "label": "CAST_PLAYBACK_EXPIRES_IN_SECONDS",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "cast_playback_expires_in_seconds",
+      "source_file": "delivery/webapp/src/lib/r2/client.ts",
+      "source_location": "L19"
+    },
+    {
+      "id": "delivery_webapp_src_lib_r2_client_default_expires_in_seconds",
+      "label": "DEFAULT_EXPIRES_IN_SECONDS",
+      "_origin": "ast",
+      "community": 76,
+      "community_name": "auth.ts",
+      "file_type": "code",
+      "norm_label": "default_expires_in_seconds",
+      "source_file": "delivery/webapp/src/lib/r2/client.ts",
+      "source_location": "L11"
+    },
+    {
       "id": "delivery_webapp_src_lib_r2_client_file_type_configs",
       "label": "FILE_TYPE_CONFIGS",
       "_origin": "ast",
@@ -149208,17 +149219,6 @@
       "norm_label": "file_type_configs",
       "source_file": "delivery/webapp/src/lib/r2/client.ts",
       "source_location": "L46"
-    },
-    {
-      "id": "delivery_webapp_src_test_api_discovery_route_test",
-      "label": "discovery/route.test.ts",
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "auth.ts",
-      "file_type": "code",
-      "norm_label": "discovery/route.test.ts",
-      "source_file": "delivery/webapp/src/test/api/discovery/route.test.ts",
-      "source_location": "L1"
     },
     {
       "id": "delivery_webapp_src_test_api_favorites_songid_test",
@@ -174165,7 +174165,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L39",
+      "source_location": "L45",
       "weight": 1.0
     },
     {
@@ -174177,7 +174177,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L39",
+      "source_location": "L45",
       "weight": 1.0
     },
     {
@@ -181833,7 +181833,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/hooks/useSongsetAudio.ts",
-      "source_location": "L496",
+      "source_location": "L498",
       "weight": 1.0
     },
     {
@@ -190089,7 +190089,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L229",
+      "source_location": "L230",
       "weight": 1.0
     },
     {
@@ -190101,7 +190101,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L265",
+      "source_location": "L266",
       "weight": 1.0
     },
     {
@@ -190113,7 +190113,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L124",
+      "source_location": "L125",
       "weight": 1.0
     },
     {
@@ -190125,7 +190125,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L275",
+      "source_location": "L276",
       "weight": 1.0
     },
     {
@@ -190137,7 +190137,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L275",
+      "source_location": "L276",
       "weight": 1.0
     },
     {
@@ -190149,7 +190149,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L276",
+      "source_location": "L277",
       "weight": 1.0
     },
     {
@@ -190161,7 +190161,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L130",
+      "source_location": "L131",
       "weight": 1.0
     },
     {
@@ -242697,7 +242697,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L25",
+      "source_location": "L31",
       "weight": 1.0
     },
     {
@@ -242709,7 +242709,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L35",
+      "source_location": "L41",
       "weight": 1.0
     },
     {
@@ -242721,7 +242721,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L41",
+      "source_location": "L47",
       "weight": 1.0
     },
     {
@@ -247137,7 +247137,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L197",
+      "source_location": "L198",
       "weight": 1.0
     },
     {
@@ -264537,7 +264537,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L37",
+      "source_location": "L43",
       "weight": 1.0
     },
     {
@@ -264549,7 +264549,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L37",
+      "source_location": "L43",
       "weight": 1.0
     },
     {
@@ -334917,7 +334917,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L56",
+      "source_location": "L57",
       "weight": 1.0
     },
     {
@@ -362502,7 +362502,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L34",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -385338,7 +385338,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L129",
+      "source_location": "L130",
       "weight": 1.0
     },
     {
@@ -385349,7 +385349,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L146",
+      "source_location": "L147",
       "weight": 1.0
     },
     {
@@ -385360,7 +385360,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L164",
+      "source_location": "L165",
       "weight": 1.0
     },
     {
@@ -385371,7 +385371,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L190",
+      "source_location": "L191",
       "weight": 1.0
     },
     {
@@ -385382,7 +385382,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L200",
+      "source_location": "L201",
       "weight": 1.0
     },
     {
@@ -385393,7 +385393,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L208",
+      "source_location": "L209",
       "weight": 1.0
     },
     {
@@ -385404,7 +385404,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L274",
+      "source_location": "L275",
       "weight": 1.0
     },
     {
@@ -385415,7 +385415,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L40",
+      "source_location": "L41",
       "weight": 1.0
     },
     {
@@ -385426,7 +385426,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -385437,7 +385437,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L65",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -385448,7 +385448,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 1.0
     },
     {
@@ -385459,7 +385459,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L92",
+      "source_location": "L93",
       "weight": 1.0
     },
     {
@@ -431634,7 +431634,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L36",
+      "source_location": "L42",
       "weight": 1.0
     },
     {
@@ -431645,7 +431645,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/simdps-worker/modal_app.py",
-      "source_location": "L42",
+      "source_location": "L48",
       "weight": 1.0
     },
     {
@@ -432525,7 +432525,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L47",
+      "source_location": "L48",
       "weight": 1.0
     },
     {
@@ -432536,7 +432536,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L52",
+      "source_location": "L53",
       "weight": 1.0
     },
     {
@@ -432547,7 +432547,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx",
-      "source_location": "L56",
+      "source_location": "L57",
       "weight": 1.0
     },
     {
@@ -483045,7 +483045,7 @@
       "confidence_score": 0.8,
       "context": "call",
       "source_file": "delivery/webapp/src/hooks/useSongsetAudio.ts",
-      "source_location": "L465",
+      "source_location": "L467",
       "weight": 1.0
     },
     {
@@ -497713,5 +497713,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "384462ed63facdbc3aaa418bb680e110c077ebc5"
+  "built_at_commit": "fc07cf66ebbb4f0ea330cbf0743cce79d764b0b6"
 }

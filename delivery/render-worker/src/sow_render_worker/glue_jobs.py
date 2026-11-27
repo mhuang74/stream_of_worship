@@ -617,7 +617,7 @@ def execute_glue_job(
         )
         return
     route = job.provider_context_json or {}
-    if route.get("provider") == "cascade" and route.get("version") == 2:
+    if route.get("provider") == "cascade" and route.get("version") in (2, 3):
         _run_cascade(conn, job, lambda_context, asset_fetcher, log, saved_route=route)
         return
     if job.provider_contacted and route.get("provider") == "simdps":

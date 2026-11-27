@@ -983,7 +983,7 @@ def update_glue_cascade(conn, job, route, *, submission_phase=None, raw=None):
             f"UPDATE glue_jobs SET {', '.join(updates)} WHERE id = %s AND user_id = %s "
             "AND active AND provider_contacted AND phase IN ('uploading', 'composing') "
             "AND heartbeat_at = %s AND provider_context_json->>'provider' = 'cascade' "
-            f"AND provider_context_json->>'version' = '2' {guard} RETURNING id",
+            f"AND provider_context_json->>'version' IN ('2', '3') {guard} RETURNING id",
             params,
         )
         if cur.fetchone() is None:

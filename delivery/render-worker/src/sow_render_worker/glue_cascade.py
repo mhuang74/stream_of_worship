@@ -29,10 +29,9 @@ from sow_render_worker.glue_staging import ReferenceAudio, prepare_staged_take
 
 LAMBDA_SECONDS = 780
 MIN_PREPARATION_SECONDS = 40
-HEDGE_PREPARATION_SECONDS = 20
 IO_SECONDS = 8
 POLL_SECONDS = 3
-GPU_BACKENDS = ("modal", "runpod")
+GPU_ORDER = ("runpod", "modal")
 JUNCTION_AUDIO_UNAVAILABLE = "GLUE_JUNCTION_AUDIO_UNAVAILABLE"
 _time = time.time
 _monotonic = time.monotonic
@@ -41,19 +40,19 @@ _sleep = time.sleep
 
 @dataclass(frozen=True)
 class Timing:
+    simdps_seconds: int
     elevenlabs_seconds: int
-    modal_hedge_seconds: int
 
     @classmethod
     def from_env(cls):
         try:
             timing = cls(
+                int(os.environ.get("SOW_GLUE_SIMDPS_SECONDS", "120")),
                 int(os.environ.get("SOW_GLUE_ELEVENLABS_SECONDS", "60")),
-                int(os.environ.get("SOW_GLUE_MODAL_HEDGE_SECONDS", "180")),
             )
             if (
-                min(timing.elevenlabs_seconds, timing.modal_hedge_seconds) < 1
-                or timing.combined_seconds + MIN_PREPARATION_SECONDS + gpu.OUTCOME_SECONDS
+                min(timing.simdps_seconds, timing.elevenlabs_seconds) < 1
+                or timing.total_seconds + MIN_PREPARATION_SECONDS + gpu.OUTCOME_SECONDS
                 > LAMBDA_SECONDS
             ):
                 raise ValueError
@@ -64,8 +63,8 @@ class Timing:
         return timing
 
     @property
-    def combined_seconds(self):
-        return self.elevenlabs_seconds + self.modal_hedge_seconds + gpu.API_SECONDS
+    def total_seconds(self):
+        return 2 * self.simdps_seconds + self.elevenlabs_seconds
 
 
 class Cascade:
@@ -81,16 +80,17 @@ class Cascade:
         if saved_route is None:
             timing = Timing.from_env()
             end = self.invocation_deadline - gpu.OUTCOME_SECONDS
-            if end - _monotonic() <= timing.combined_seconds + HEDGE_PREPARATION_SECONDS:
+            if end - _monotonic() <= timing.total_seconds + MIN_PREPARATION_SECONDS:
                 raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
             endpoint, self.r2 = gpu.check_config()
             self.route = {
-                "version": 2,
+                "version": 3,
                 "provider": "cascade",
+                "policy": "cascade-simdps",
                 "seed": job.seed,
                 "deadline_epoch": _time() + end - _monotonic(),
+                "simdps_seconds": timing.simdps_seconds,
                 "elevenlabs_seconds": timing.elevenlabs_seconds,
-                "modal_hedge_seconds": timing.modal_hedge_seconds,
                 "runpod_endpoint": endpoint,
                 "modal_environment": os.environ.get("SOW_GLUE_MODAL_ENVIRONMENT", "main"),
                 "attempts": {},
@@ -105,14 +105,9 @@ class Cascade:
         self.assets = assets or gpu.PreparationAssets(
             self.r2, work_dir, context, time_left=self._preparation_time
         )
-        self.preparation_epoch = (
-            self.route["deadline_epoch"]
-            - self.route["modal_hedge_seconds"]
-            - gpu.API_SECONDS
-            - HEDGE_PREPARATION_SECONDS
-        )
-        if "elevenlabs" not in self.attempts:
-            self.preparation_epoch -= self.route["elevenlabs_seconds"]
+        # Overwritten per GPU stage and by _elevenlabs; the initial value only
+        # bounds asset preparation before the first provider is chosen.
+        self.preparation_epoch = self.route["deadline_epoch"]
         self.audio = None
         self.lookup_errors = set()
 
@@ -227,11 +222,11 @@ class Cascade:
             model=attempt["model"],
             submissionId=attempt.get("submission_id"),
             durationMs=round(1000 * (_time() - attempt["submitted_epoch"])),
-            overlap=all(name in self.attempts for name in GPU_BACKENDS),
         )
 
     def _elevenlabs(self, inputs):
         backend = "elevenlabs"
+        self.preparation_epoch = self.route["deadline_epoch"]
         excerpts = self._excerpts(inputs)
         if any(excerpt.rejection_code for excerpt in excerpts):
             self.route["elevenlabs_skip"] = GLUE_COPYRIGHT_REJECTED
@@ -307,15 +302,15 @@ class Cascade:
     def _gpu_audio(self):
         if self.audio is not None:
             return self.audio
-        if "modal" in self.attempts:
-            source = self.attempts["modal"]
+        source = next((self.attempts[name] for name in GPU_ORDER if name in self.attempts), None)
+        if source is not None:
             blobs = []
             for name in ("montage", "guide"):
                 result = gpu._read_object(
                     self.r2,
                     source[f"{name}_key"],
                     gpu.INPUT_CAP_BYTES,
-                    self._io_deadline(self.preparation_epoch),
+                    self._io_deadline(),
                 )
                 if not result or hashlib.sha256(result[0]).hexdigest() != source[f"{name}_sha256"]:
                     raise RuntimeError("Stored SimDPS input is unavailable")
@@ -350,10 +345,7 @@ class Cascade:
                 raise spine.GlueJobError(JUNCTION_AUDIO_UNAVAILABLE, "none", reason)
         return self.audio
 
-    def _submit_gpu(self, backend):
-        self.preparation_epoch = self.route["deadline_epoch"] - gpu.API_SECONDS
-        if backend == "modal":
-            self.preparation_epoch -= self.route["modal_hedge_seconds"] + HEDGE_PREPARATION_SECONDS
+    def _submit_gpu(self, backend, *, deadline_seconds):
         audio = self._gpu_audio()
         prefix = f"glue-simdps-tmp/{self.job.user_id}/{self.job.id}"
         attempt, request = gpu.stage_inputs(
@@ -363,10 +355,7 @@ class Cascade:
         self._preparation_time()
         now = _time()
         payload["input"]["submitted_epoch"] = now
-        attempt.update(submitted_epoch=now, deadline_epoch=now + gpu.API_SECONDS)
-        if backend == "modal":
-            attempt["hedge_epoch"] = now + self.route["modal_hedge_seconds"]
-            attempt["deadline_epoch"] += self.route["modal_hedge_seconds"]
+        attempt.update(submitted_epoch=now, deadline_epoch=now + deadline_seconds)
         self.attempts[backend] = attempt
         self._save(submission_phase="compose")
         self.log(
@@ -404,7 +393,11 @@ class Cascade:
 
     def _gpu_result(self, backend, *, final=False):
         attempt = self.attempts.get(backend)
-        if attempt is None or "failure" in attempt:
+        if attempt is None:
+            return False
+        # A final read (salvage) still inspects an attempt that already timed
+        # out: the GPU may have written its result just after the last lookup.
+        if "failure" in attempt and not final:
             return False
         end = None if final else min(attempt["deadline_epoch"], self.route["deadline_epoch"])
         deadline = self._io_deadline(end)
@@ -473,54 +466,62 @@ class Cascade:
                 self._fail_attempt(backend, f"remote-{status.lower()}")
         return False
 
-    def _gpu_race(self):
-        if "modal" not in self.attempts:
-            self._submit_gpu("modal")
-        while _time() < self.route["deadline_epoch"]:
+    def _gpu_stage(self, backend):
+        now = _time()
+        window = self.route.get("simdps_seconds", 0)
+        # Windows that still follow this stage: ElevenLabs always, plus Modal's
+        # when RunPod runs. Reserving the current window too keeps preparation
+        # from eating the budget of a later fallback.
+        later = self.route.get("elevenlabs_seconds", 0)
+        if backend != GPU_ORDER[-1]:
+            later += window
+        self.preparation_epoch = self.route["deadline_epoch"] - later - window
+        limit = min(now + window, self.route["deadline_epoch"] - later)
+        if limit <= now:
+            raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
+        try:
+            self._submit_gpu(backend, deadline_seconds=limit - now)
+        except spine.GlueJobError as exc:
+            if exc.code == JUNCTION_AUDIO_UNAVAILABLE:
+                self.route["simdps_skip"] = exc.detail
+                return
+            raise
+        except (BotoCoreError, ClientError, OSError):
+            if backend in self.attempts:
+                raise  # contact may have been recorded; the outcome is ambiguous
+            self.log(
+                "glue.provider.fallback",
+                provider=backend,
+                reason="input-storage-unavailable",
+            )
+            return
+        attempt = self.attempts[backend]
+        if "failure" in attempt:
+            return
+        while _time() < attempt["deadline_epoch"] and _time() < self.route["deadline_epoch"]:
             self._save()
-            for backend in GPU_BACKENDS:
-                if self._gpu_result(backend):
-                    return
-            modal = self.attempts["modal"]
-            can_hedge = "runpod" not in self.attempts and "runpod_skip" not in self.route
-            if can_hedge and ("failure" in modal or _time() >= modal["hedge_epoch"]):
-                reason = modal.get("failure", "hedge-threshold")
-                self.log(
-                    "glue.provider.hedge",
-                    provider="runpod",
-                    reason=reason,
-                    durationMs=round(1000 * (_time() - modal["submitted_epoch"])),
-                )
-                try:
-                    self._submit_gpu("runpod")
-                except spine.GlueJobError as exc:
-                    if exc.code != spine.GLUE_EXECUTION_DEADLINE:
-                        raise
-                    self.route["runpod_skip"] = exc.code
-                    self._save()
-                except (BotoCoreError, ClientError, OSError):
-                    self.route["runpod_skip"] = "input-storage-unavailable"
-                    self._save()
-                    self.log(
-                        "glue.provider.fallback",
-                        provider="runpod",
-                        reason=self.route["runpod_skip"],
-                    )
-                continue
-            now = _time()
-            pending = [
-                attempt["deadline_epoch"]
-                for backend, attempt in self.attempts.items()
-                if backend in GPU_BACKENDS
-                and "failure" not in attempt
-                and attempt["deadline_epoch"] > now
-            ]
-            if not pending:
-                break
-            next_poll = min(now + POLL_SECONDS, max(pending), self.route["deadline_epoch"])
-            if can_hedge:
-                next_poll = min(next_poll, modal["hedge_epoch"])
-            _sleep(max(0, next_poll - _time()))
+            if self._gpu_result(backend):
+                return
+            if "failure" in attempt:
+                return
+            _sleep(max(0, min(POLL_SECONDS, attempt["deadline_epoch"] - _time())))
+        if "winner" in self.route or "failure" in attempt:
+            return
+        if self._gpu_result(backend, final=True):
+            return
+        if "failure" in attempt:
+            return
+        if backend in self.lookup_errors:
+            raise RuntimeError("Verified audio lookup must be retried")
+        self._fail_attempt(backend, "timeout")
+        self._cancel(backend)
+
+    def _simdps_pipeline(self):
+        self._gpu_stage("runpod")
+        if "winner" not in self.route and "simdps_skip" not in self.route:
+            self._gpu_stage("modal")
+        if "winner" not in self.route:
+            self._elevenlabs(self._inputs())
 
     def _cancel(self, backend):
         attempt = self.attempts.get(backend, {})
@@ -537,40 +538,49 @@ class Cascade:
         except Exception:
             self.log("glue.provider.cancel.failed", provider=backend, level="warning")
 
+    def _salvage(self):
+        for backend in GPU_ORDER:
+            if self._gpu_result(backend, final=True):
+                return
+        elevenlabs = self.attempts.get("elevenlabs")
+        if elevenlabs is not None and not elevenlabs.get("failure"):
+            result = gpu._read_object(
+                self.r2, elevenlabs["result_key"], MAX_RESPONSE_BYTES, self._io_deadline()
+            )
+            if result:
+                self._choose("elevenlabs", result[0])
+                return
+            self._fail_attempt("elevenlabs", "ambiguous")
+
     def run(self):
         if "winner" not in self.route:
             if self.recovering:
-                elevenlabs = self.attempts.get("elevenlabs")
-                if elevenlabs and not elevenlabs.get("failure"):
-                    result = gpu._read_object(
-                        self.r2, elevenlabs["result_key"], MAX_RESPONSE_BYTES, self._io_deadline()
-                    )
-                    if result:
-                        self._choose("elevenlabs", result[0])
-                    else:
-                        self._fail_attempt("elevenlabs", "ambiguous")
-                if "winner" not in self.route:
-                    for backend in GPU_BACKENDS:
-                        if self._gpu_result(backend, final=True):
-                            break
+                self._salvage()
             else:
-                self._elevenlabs(self._inputs())
-            if "winner" not in self.route and _time() < self.route["deadline_epoch"]:
-                self._gpu_race()
+                self._simdps_pipeline()
         self.finalization_deadline = min(
             self.invocation_deadline, _monotonic() + gpu.OUTCOME_SECONDS
         )
-        if "winner" not in self.route:
-            for backend in GPU_BACKENDS:
-                if self._gpu_result(backend, final=True):
-                    break
         winner = self.route.get("winner")
-        for backend in GPU_BACKENDS:
-            if winner is None or winner["backend"] != backend:
+        for backend in GPU_ORDER:
+            attempt = self.attempts.get(backend)
+            if winner is not None and winner["backend"] == backend:
+                continue
+            if attempt is not None and "failure" not in attempt:
                 self._cancel(backend)
         if winner is None:
             if self.lookup_errors:
                 raise RuntimeError("Verified audio lookup must be retried")
+            if not self.job.provider_contacted:
+                if self.route.get("simdps_skip"):
+                    raise spine.GlueJobError(
+                        JUNCTION_AUDIO_UNAVAILABLE, "none", self.route["simdps_skip"]
+                    )
+                skip = self.route.get("elevenlabs_skip")
+                if skip == GLUE_COPYRIGHT_REJECTED:
+                    raise spine.GlueJobError(GLUE_COPYRIGHT_REJECTED, "none")
+                if skip == spine.GLUE_NOT_CONFIGURED:
+                    raise spine.GlueJobError(spine.GLUE_NOT_CONFIGURED, "free")
             raise spine.GlueJobError(
                 spine.GLUE_WORKER_FAILED,
                 "paid" if self.job.provider_contacted else "free",
