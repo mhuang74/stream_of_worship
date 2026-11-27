@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import soundfile as sf
+from botocore.response import StreamingBody
 
 from sow_render_worker import glue_jobs as spine
 from sow_render_worker import glue_staging
@@ -264,43 +266,49 @@ def _log(state):
     return log
 
 
-class ReleasedSocketBody:
-    """Streaming body whose socket lookup fails once the bytes are exhausted.
+class _Socket:
+    def __init__(self) -> None:
+        self.timeouts: list[float] = []
 
-    botocore reaches the socket through urllib3 internals, and urllib3 releases
-    the connection at end of body, so ``set_socket_timeout`` raises
-    ``AttributeError`` exactly like a production R2 read.
+    def settimeout(self, seconds: float) -> None:
+        self.timeouts.append(seconds)
+
+
+class ExhaustedSocketStream:
+    """urllib3 HTTPResponse stand-in that drops ``_fp.fp`` at end of body.
+
+    botocore resolves ``_raw_stream._fp.fp.raw._sock`` and logs an ERROR record
+    before raising once urllib3 has released the connection, so the double must
+    reproduce that exact chain.
     """
 
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes) -> None:
         self._data = data
         self._offset = 0
-        self.reads = 0
+        self.socket = _Socket()
+        self._fp = SimpleNamespace(fp=SimpleNamespace(raw=SimpleNamespace(_sock=self.socket)))
 
-    def set_socket_timeout(self, _seconds):
-        if self._offset >= len(self._data):
-            raise AttributeError("'NoneType' object has no attribute 'raw'")
-
-    def read(self, size=-1):
-        self.reads += 1
+    def read(self, amt: int | None = None) -> bytes:
         remaining = self._data[self._offset :]
-        chunk = remaining if size < 0 else remaining[:size]
+        chunk = remaining if amt is None else remaining[:amt]
         self._offset += len(chunk)
+        if self._offset >= len(self._data):
+            self._fp.fp = None
         return chunk
 
-    def close(self):
-        self._data = self._data[:0]
+    def close(self) -> None:
+        self._fp = None
 
 
-class ReleasedSocketClient:
-    def __init__(self, data: bytes):
+class BotocoreBodyClient:
+    def __init__(self, data: bytes) -> None:
         self.data = data
-        self.bodies: list[ReleasedSocketBody] = []
+        self.streams: list[ExhaustedSocketStream] = []
 
     def get_object(self, **kwargs):
-        body = ReleasedSocketBody(self.data)
-        self.bodies.append(body)
-        return {"Body": body}
+        stream = ExhaustedSocketStream(self.data)
+        self.streams.append(stream)
+        return {"Body": StreamingBody(stream, len(self.data))}
 
     def put_object(self, **kwargs):
         return {}
@@ -308,7 +316,7 @@ class ReleasedSocketClient:
 
 class TestR2StagingStore:
     def _store(self, data: bytes):
-        client = ReleasedSocketClient(data)
+        client = BotocoreBodyClient(data)
         return (
             glue_staging.R2StagingStore(
                 SimpleNamespace(bucket_name="bucket", client=client),
@@ -327,7 +335,7 @@ class TestR2StagingStore:
         )
 
         assert store.read_raw(job) == raw
-        assert client.bodies[0].reads > 1
+        assert client.streams[0].socket.timeouts
 
     def test_put_take_verifies_the_stored_bytes_after_the_socket_is_released(self):
         wav = _response_bytes()
@@ -335,7 +343,35 @@ class TestR2StagingStore:
 
         store.put_take("glue/take.wav", wav)
 
-        assert len(client.bodies) == 1
+        assert len(client.streams) == 1
+
+    def test_staging_reads_do_not_provoke_a_botocore_error(self, caplog):
+        raw = _response_bytes()
+        store, client = self._store(raw)
+        job = SimpleNamespace(
+            raw_response_r2_key="glue/raw.pcm",
+            raw_response_sha256=hashlib.sha256(raw).hexdigest(),
+            raw_response_bytes=len(raw),
+        )
+
+        with caplog.at_level(logging.ERROR, logger="botocore.response"):
+            store.read_raw(job)
+            store.put_take("glue/take.wav", raw)
+
+        errors = [
+            record
+            for record in caplog.records
+            if record.name == "botocore.response" and record.levelno >= logging.ERROR
+        ]
+        assert errors == []
+
+    def test_interface_drift_attribute_error_is_still_swallowed(self):
+        body = SimpleNamespace(
+            _raw_stream=SimpleNamespace(_fp=SimpleNamespace(fp=object())),
+            set_socket_timeout=lambda _seconds: (_ for _ in ()).throw(AttributeError("drift")),
+        )
+
+        glue_staging.set_read_timeout(body, 5)
 
 
 class TestPrepareStagedTake:

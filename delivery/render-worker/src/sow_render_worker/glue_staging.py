@@ -92,16 +92,22 @@ class StagingGeometryError(Exception):
 # ---------------------------------------------------------------------------
 
 
+def _socket_attached(body: Any) -> bool:
+    """True while the body's urllib3 stream still holds its socket chain."""
+    raw = getattr(body, "_raw_stream", None)
+    return getattr(getattr(raw, "_fp", None), "fp", None) is not None
+
+
 def set_read_timeout(body: Any, seconds: float) -> None:
     """Bound the next read of an R2 body, if that body still owns a socket.
 
-    botocore reaches the socket through urllib3 internals. Once the body has been
-    read to its end, urllib3 releases the connection and that lookup raises
-    ``AttributeError``; the response is already complete, so the next read is the
-    one that reports end of stream.
+    urllib3 drops ``HTTPResponse._fp.fp`` once the body reaches its end, and
+    ``botocore.response.StreamingBody.set_socket_timeout`` logs a full ERROR
+    record with a stack trace before re-raising the resulting AttributeError.
+    Check that same chain first so a finished body never reaches botocore.
     """
     setter = getattr(body, "set_socket_timeout", None)
-    if setter is None:
+    if setter is None or not _socket_attached(body):
         return
     try:
         setter(seconds)
