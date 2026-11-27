@@ -1,5 +1,6 @@
 import importlib
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -148,6 +149,15 @@ class TestDockerConfiguration:
         assert '--build-arg FFMPEG_VERSION="$FFMPEG_VERSION"' in workflow
         assert "--build-arg REQUIRE_R2_FFMPEG=true" in workflow
         assert "refusing to deploy without R2-sourced FFmpeg" in workflow
+
+    def test_ci_installs_the_same_pinned_ffmpeg_as_the_dockerfile(self):
+        dockerfile = (RENDER_WORKER_DIR / "Dockerfile").read_text()
+        version = re.search(r"ARG FFMPEG_VERSION=(\S+)", dockerfile).group(1)
+        workflow = (RENDER_WORKER_DIR.parent.parent / ".github/workflows/ci.yml").read_text()
+
+        assert "scripts/install-ffmpeg-ci.sh" in workflow
+        assert f'FFMPEG_VERSION: "{version}"' in workflow
+        assert re.search(r'FFMPEG_SHA256: "[0-9a-f]{64}"', workflow)
 
     def test_dockerfiles_pass_require_r2_flag_to_download_script(self):
         for dockerfile_name in ("Dockerfile", "Dockerfile.dev"):
