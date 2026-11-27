@@ -97,6 +97,7 @@ function makeFakeSession(totalSeconds = 200): FakeSession {
       position = seconds;
       playing = true;
     }),
+    prepareAt: vi.fn(async () => {}),
     getTimelinePositionSeconds: () => position,
     isPlaying: () => playing,
     getProgress: () => progress,

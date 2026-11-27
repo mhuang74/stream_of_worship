@@ -178,6 +178,8 @@ export const renderBundle = bundle({
       "This junction is too short for an AI transition.",
     "render.gluePreflight.reason.audioUnavailable":
       "The AI transition audio is unavailable. Try again.",
+    "render.gluePreflight.reason.junctionAudioUnavailable":
+      "This junction can't be generated right now. Adjust the arrangement or transition length.",
     "render.gluePreflight.reason.executionDeadline":
       "The last AI transition attempt ran out of time.",
     "render.gluePreflight.reason.dispatchFailed":
@@ -345,6 +347,8 @@ export const renderBundle = bundle({
     "render.gluePreflight.reason.copyright": "這首錄音無法用於 AI 轉場。",
     "render.gluePreflight.reason.tooShort": "這個銜接點太短，無法製作 AI 轉場。",
     "render.gluePreflight.reason.audioUnavailable": "AI 轉場音訊無法取得，請再試一次。",
+    "render.gluePreflight.reason.junctionAudioUnavailable":
+      "這個接點的音訊無法產生；請調整編排或轉場長度。",
     "render.gluePreflight.reason.executionDeadline": "上一次 AI 轉場逾時。",
     "render.gluePreflight.reason.dispatchFailed": "無法開始 AI 轉場，請免費重試。",
     "render.gluePreflight.reason.inputsChanged":

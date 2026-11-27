@@ -417,13 +417,33 @@ def test_execute_reports_gpu_ineligibility_without_charge(delivery, monkeypatch,
         raise glue_excerpts.GlueAudioUnavailable("Incoming recording is unavailable", side="B")
 
     def fail(conn, job, exc, *, contacted, log):
-        failures.append((exc.code, exc.retry_kind, contacted))
+        failures.append((exc.code, exc.retry_kind, contacted, exc.detail))
 
     monkeypatch.setattr(cascade.Cascade, "run", unavailable)
     monkeypatch.setattr(spine, "_handle_failure", fail)
     cascade.execute(None, delivery.job, tmp_path, None, None, delivery.log)
-    assert failures == [("GLUE_JUNCTION_AUDIO_UNAVAILABLE", "none", False)]
+    # The customer-facing detail names the side, never the object key.
+    assert failures == [
+        ("GLUE_JUNCTION_AUDIO_UNAVAILABLE", "none", False, "source-audio-unavailable side=B")
+    ]
     assert cascade.JUNCTION_AUDIO_UNAVAILABLE == "GLUE_JUNCTION_AUDIO_UNAVAILABLE"
+
+
+def test_execute_keeps_the_ineligible_window_detail(delivery, monkeypatch):
+    def ineligible(self):
+        raise spine.GlueJobError(
+            cascade.JUNCTION_AUDIO_UNAVAILABLE, "none", "unsupported-window supportedBeats=4"
+        )
+
+    failures = []
+
+    def fail(conn, job, exc, *, contacted, log):
+        failures.append((exc.code, exc.detail))
+
+    monkeypatch.setattr(cascade.Cascade, "run", ineligible)
+    monkeypatch.setattr(spine, "_handle_failure", fail)
+    cascade.execute(None, delivery.job, "", None, None, delivery.log)
+    assert failures == [("GLUE_JUNCTION_AUDIO_UNAVAILABLE", "unsupported-window supportedBeats=4")]
 
 
 def test_execute_reraises_after_database_loss(delivery, monkeypatch, tmp_path):

@@ -95,6 +95,7 @@ export const songsetsBundle = bundle({
     "songsets.listen.untitled": "Untitled",
     "songsets.listen.action.retry": "Retry",
     "songsets.listen.seekAria": "Seek preview",
+    "songsets.listen.glueSegmentAria": "Play the AI transition from {from} to {to}",
     "songsets.listen.glueFallback":
       "The AI transition from {from} to {to} could not play. Using the normal transition.",
     "songsets.listen.glueRetry": "Retry audio",
@@ -268,6 +269,7 @@ export const songsetsBundle = bundle({
     "songsets.listen.untitled": "未命名",
     "songsets.listen.action.retry": "重試",
     "songsets.listen.seekAria": "調整試聽位置",
+    "songsets.listen.glueSegmentAria": "試聽「{from}」到「{to}」的 AI 轉場",
     "songsets.listen.glueFallback":
       "「{from}」到「{to}」的 AI 轉場無法播放，已改用一般轉場。",
     "songsets.listen.glueRetry": "重試音訊",

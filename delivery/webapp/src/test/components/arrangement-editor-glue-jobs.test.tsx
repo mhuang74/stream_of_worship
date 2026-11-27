@@ -23,6 +23,7 @@ vi.mock("@/hooks/useSongsetAudio", () => ({
     stop: vi.fn(),
     seek: vi.fn(),
     startAtSeconds: vi.fn().mockResolvedValue(undefined),
+    prepareAt: vi.fn().mockResolvedValue(undefined),
     glueFailures: [],
     retryGlueAudio: vi.fn().mockResolvedValue(true),
   }),
@@ -207,7 +208,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function installFetch(
   initialStatuses: GlueJobStatus[] = [],
-  quote = QUOTE as typeof QUOTE & { gpuFallback?: boolean }
+  quote = QUOTE as typeof QUOTE & { gpuFallback?: boolean },
+  options: { cancelCode?: string; statusAfterCancel?: GlueJobStatus } = {}
 ): Harness {
   let activeStatuses = initialStatuses;
   const harness: Harness = {
@@ -241,6 +243,9 @@ function installFetch(
       }
       if (url.endsWith("/cancel") && method === "POST") {
         harness.cancelCalls.push(url);
+        if (options.cancelCode) {
+          return jsonResponse({ code: options.cancelCode, message: "paid" }, 409);
+        }
         return jsonResponse({ jobId: JOB_ID, status: "cancelled" });
       }
       if (url.endsWith("/retry-processing") && method === "POST") {
@@ -255,7 +260,11 @@ function installFetch(
         return jsonResponse({ jobId: JOB_ID, status: "queued", charged: false }, 202);
       }
       if (url.match(/\/api\/glue-jobs\/[0-9a-f-]+$/)) {
-        return jsonResponse(jobStatus());
+        return jsonResponse(
+          options.statusAfterCancel && harness.cancelCalls.length > 0
+            ? options.statusAfterCancel
+            : jobStatus()
+        );
       }
       return jsonResponse({ code: "GLUE_NOT_FOUND", message: "not found" }, 404);
     })
@@ -337,10 +346,12 @@ describe("ArrangementEditorSheet AI transition take menu", () => {
       "take-1",
       "take-2",
     ]);
-    expect(options[0].textContent).toContain("3.2");
-    expect(options[1].textContent).toContain("4.5");
-    expect(options[1].textContent).toContain("Check");
-    expect(options[0].textContent).toContain("Ready");
+    // The label is the version and its time; the transition length is the
+    // junction's own setting now, so it is not repeated per take.
+    expect(options[0].textContent).toContain("Version 1");
+    expect(options[1].textContent).toContain("Version 2");
+    expect(options[0].textContent).not.toContain("3.2");
+    expect(options[1].textContent).toContain("needs a listen");
     expect(select.textContent).not.toContain("AI transition");
 
     fireEvent.change(select, { target: { value: "take-1" } });
@@ -406,7 +417,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     renderSheet();
 
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
 
@@ -444,7 +455,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     renderSheet();
 
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -467,8 +478,10 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("arrangement-glue-cancel")).toBeNull()
     );
-    expect(screen.getByTestId("arrangement-glue-contacted").textContent).toContain(
-      "can't be cancelled or refunded"
+    // After contact the rail states the phase only: no refund or cancel copy.
+    expect(screen.queryByTestId("arrangement-glue-contacted")).toBeNull();
+    expect(screen.getByTestId("arrangement-glue").textContent).not.toMatch(
+      /refund|cancel/i
     );
     expect(screen.getByTestId("arrangement-glue-phase").textContent).toContain(
       "Creating the AI transition"
@@ -517,7 +530,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     installFetch();
     renderSheet();
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -550,7 +563,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     installFetch();
     renderSheet();
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -587,7 +600,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     installFetch();
     renderSheet();
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -619,7 +632,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     installFetch();
     renderSheet();
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -649,7 +662,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     const harness = installFetch();
     renderSheet();
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
     await screen.findByTestId("arrangement-glue-confirm");
@@ -826,7 +839,7 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     ]);
 
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-quote")).toBeTruthy()
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
     );
     fireEvent.click(screen.getByTestId("arrangement-glue-try-another"));
     const confirm = await screen.findByTestId("arrangement-glue-confirm");
@@ -851,5 +864,59 @@ describe("ArrangementEditorSheet AI transition jobs", () => {
     );
     expect(screen.queryByTestId("arrangement-glue-retry-processing")).toBeNull();
     expect(screen.queryByTestId("arrangement-glue-resume")).toBeNull();
+  });
+
+  it("names the transition length that works from a junction cause token", async () => {
+    installFetch([
+      jobStatus({
+        phase: "failed",
+        active: false,
+        providerContacted: true,
+        retryKind: "none",
+        errorCode: "GLUE_JUNCTION_AUDIO_UNAVAILABLE",
+        errorDetail: "unsupported-window supportedBeats=8",
+      }),
+    ]);
+    renderSheet();
+
+    const alert = await screen.findByTestId("arrangement-glue-job-error");
+    expect(alert.textContent).toContain("8 beats will work");
+    // The token is a machine value: it never reaches the reader.
+    const rail = screen.getByTestId("arrangement-glue").textContent ?? "";
+    expect(rail).not.toContain("supportedBeats");
+    expect(rail).not.toContain("GLUE_JUNCTION_AUDIO_UNAVAILABLE");
+    expect(screen.queryByTestId("arrangement-glue-error-detail")).toBeNull();
+  });
+
+  it("answers a paid-not-cancellable 409 with a silent refresh", async () => {
+    const harness = installFetch([], QUOTE, {
+      cancelCode: "GLUE_PAID_NOT_CANCELLABLE",
+      statusAfterCancel: jobStatus({ phase: "composing", providerContacted: true }),
+    });
+    renderSheet();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-quota-info")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-generate"));
+    await screen.findByTestId("arrangement-glue-confirm");
+    fireEvent.click(screen.getByTestId("arrangement-glue-confirm-generate"));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+    FakeEventSource.instances[0].emit(
+      jobStatus({ phase: "preparing", providerContacted: false })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("arrangement-glue-cancel")).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-cancel"));
+    await waitFor(() => expect(harness.cancelCalls).toHaveLength(1));
+
+    // The 409 means the provider already has the request: the refreshed row
+    // hides Cancel and no error text is raised.
+    await waitFor(() =>
+      expect(screen.queryByTestId("arrangement-glue-cancel")).toBeNull()
+    );
+    expect(screen.queryByTestId("arrangement-glue-job-error")).toBeNull();
   });
 });

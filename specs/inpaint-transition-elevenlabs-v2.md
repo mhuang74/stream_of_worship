@@ -57,7 +57,7 @@ The resolved UI state is derived from `glue_enabled`, saved-input validity, desc
 | `needs-generation` | Enabled, saved and valid, but no effective ready take. | Ordinary transition in Preview/Listen; Generate is available when no other blocker applies. Render is blocked. |
 | `queued` | Durable job committed and awaiting dispatch/claim. | Current ready take or ordinary transition. Show queue elapsed time. |
 | `preparing` | Worker validates persisted inputs, builds excerpts, and rechecks descriptor. | Same playback rule. No paid request has necessarily occurred. |
-| `uploading` | One or more paid excerpt uploads are in progress or complete. | Paid-attempt cancellation/refund is no longer offered. |
+| `uploading` | One or more paid excerpt uploads are in progress or complete. | Cancel is hidden; the UI shows only the phase. |
 | `composing` | Paid compose is in progress or its provider outcome is being recorded. | Same cancellation rule. Never auto-repeat an ambiguous request. |
 | `storing-response` | Successful raw provider bytes are being persisted and verified. | Existing playback remains unchanged. Recovery after this point is free. |
 | `staging` | Persisted response is decoded, sliced, measured, staged, and stored. | Retry processing is free after failures with a verified raw response. |
@@ -387,7 +387,7 @@ Mirror the existing render-job SSE route's authorization and polling pattern: qu
 
 #### Cancellation
 
-`POST /api/glue-jobs/[id]/cancel` uses an atomic conditional update that succeeds only with `provider_contacted=false` and a nonterminal phase. It sets `cancelled`, clears active, and releases the unconsumed reservation in the same transaction. The worker's first-provider-start transition is the competing atomic compare-and-set: it sets `provider_contacted=true` and consumes the reservation only while `provider_contacted=false` and phase is not `cancelled`. Exactly one transition can win; a start cannot slip past an accepted cancel, and a cancel cannot be accepted after a request may be sent. The worker rechecks the claimed state immediately before network I/O. After contact, cancellation returns `409 GLUE_PAID_NOT_CANCELLABLE`; the UI states that the paid request cannot be cancelled or refunded. There is no later cancellation-request flag.
+`POST /api/glue-jobs/[id]/cancel` uses an atomic conditional update that succeeds only with `provider_contacted=false` and a nonterminal phase. It sets `cancelled`, clears active, and releases the unconsumed reservation in the same transaction. The worker's first-provider-start transition is the competing atomic compare-and-set: it sets `provider_contacted=true` and consumes the reservation only while `provider_contacted=false` and phase is not `cancelled`. Exactly one transition can win; a start cannot slip past an accepted cancel, and a cancel cannot be accepted after a request may be sent. The worker rechecks the claimed state immediately before network I/O. After contact, cancellation returns `409 GLUE_PAID_NOT_CANCELLABLE`; the UI hides Cancel once the provider has been contacted (the row's own 409 is answered by a silent refresh, not an error message). There is no later cancellation-request flag.
 
 ### 2.4 Dispatch and durable worker execution
 
@@ -608,10 +608,10 @@ The Glue suppresses only its own Junction's gap/crossfade. It never modifies A/B
 In `ArrangementEditorSheet.tsx`, place controls in the Preview rail above/next to transport:
 
 - Enable switch labelled **AI transition to {next song}**, hidden for no successor. PATCH enable state with rollback on failure.
-- Beat selector 2/4/8/16, default 4, with calculated target seconds. Changing beats immediately re-resolves older matching takes and never deletes audio.
-- Generate/Try another button with exact new-credit estimate and quota/reset display. Require explicit paid confirmation. While another job is active, identify its Junction instead of enqueueing.
-- Job id, actual phase, elapsed time, and Cancel only before provider contact. After contact, show **This paid request can’t be cancelled or refunded**. Do not display invented percentages.
-- Selected-take menu with earlier ready takes, free restore, actual **Ready · {duration}**, and plain-language measured `check` warning. `check` means a measured reference-envelope issue needs listening, not that vocals/musical fit were automatically judged.
+- Beat selector 2/4/8/16, default 4. Both sides floor at a 3 s junction, so a choice that hits that floor carries a minimum-length caption instead of a seconds readout. Changing beats immediately re-resolves older matching takes and never deletes audio.
+- Generate/Try another button with exact new-credit estimate; attempts remaining and the reset time sit behind the rail's info icon. Require explicit paid confirmation. While another job is active, identify its Junction instead of enqueueing.
+- Job id, actual phase, elapsed time, and Cancel only before provider contact. After contact, show only the phase. Do not display invented percentages.
+- Selected-take menu with earlier ready takes labelled **Version {n} · {finished}**, free restore, and a plain-language measured `check` warning. `check` means a measured reference-envelope issue needs listening, not that vocals/musical fit were automatically judged.
 - A short explanation that AI transition replaces only this Junction's ordinary gap/crossfade.
 
 Disable controls with concrete adjacent copy for unsaved draft, no successor, missing tempo/analysis, invalid/stale arrangement, quota exhaustion, over-120-second request, or another active job. Initial failure leaves Play usable with ordinary transition. Errors remain inline by the Junction with job id and the correct Retry processing—free or paid-confirmation action.

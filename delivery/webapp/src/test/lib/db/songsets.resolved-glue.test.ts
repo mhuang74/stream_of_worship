@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 vi.mock("@/db", () => ({
   db: {
+    select: vi.fn(),
     query: {
       songsets: { findFirst: vi.fn() },
       renderJobs: { findFirst: vi.fn() },
+      songsetItems: { findFirst: vi.fn() },
     },
   },
 }));
@@ -14,11 +18,20 @@ vi.mock("@/lib/glue/resolve", () => ({
   loadResolvedGlueJunctions: vi.fn(),
   loadResolvedGlueJunctionsForList: vi.fn(),
   glueTakeSelectionError: vi.fn(),
-  takeRowFromDb: vi.fn(),
+  takeRowFromDb: vi.fn((row: unknown) => row),
 }));
 
+// Keep the real descriptor derivation (the point of the PATCH) but feed it the
+// fixture item rows instead of hitting the database.
+vi.mock("@/lib/glue/quote", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, loadGlueItemRows: vi.fn() };
+});
+
 import { db } from "@/db";
-import { getSongset } from "@/lib/db/songsets";
+import { mutationDb } from "@/db/mutation-db";
+import { getSongset, updateSongsetItem } from "@/lib/db/songsets";
+import { loadGlueItemRows } from "@/lib/glue/quote";
 import { loadResolvedGlueJunctions } from "@/lib/glue/resolve";
 import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 
@@ -171,5 +184,153 @@ describe("getSongset resolved AI transitions", () => {
     const songset = await getSongset("songset-1", 1);
     expect(songset!.items[0].glueTakeId).toBeNull();
     expect(songset!.items[0].glue.state).toBe("stale");
+  });
+});
+
+interface QueryChain {
+  from(): QueryChain;
+  where(): QueryChain;
+  orderBy(): QueryChain;
+  limit(): QueryChain;
+  for(): QueryChain;
+  then(
+    resolve: (value: unknown) => unknown,
+    reject?: (reason: unknown) => unknown
+  ): Promise<unknown>;
+}
+
+/** Chainable stand-in for a Drizzle query builder; awaits to `result`. */
+function queryChain(result: unknown): QueryChain {
+  const chain: QueryChain = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: () => chain,
+    limit: () => chain,
+    for: () => chain,
+    then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+  };
+  return chain;
+}
+
+interface UpdateChain {
+  set(values: Record<string, unknown>): UpdateChain;
+  where(): UpdateChain;
+  then(resolve: (value: unknown) => unknown): Promise<unknown>;
+}
+
+function updateChain(record: (values: Record<string, unknown>) => void): UpdateChain {
+  const chain: UpdateChain = {
+    set: (values) => {
+      record(values);
+      return chain;
+    },
+    where: () => chain,
+    then: (resolve) => Promise.resolve(undefined).then(resolve),
+  };
+  return chain;
+}
+
+describe("updateSongsetItem beats re-selection", () => {
+  const updates: Array<Record<string, unknown>> = [];
+  let takeRows: unknown[] = [];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updates.length = 0;
+    takeRows = [];
+    vi.mocked(loadGlueItemRows).mockResolvedValue(
+      new Map([
+        [
+          "songset-1",
+          [
+            {
+              itemId: "item-a",
+              position: 0,
+              userId: 1,
+              glueEnabled: true,
+              glueBeats: 4,
+              glueActiveTakeId: TAKE_ID,
+              updatedAt: "2026-11-22T10:00:00.000Z",
+              arrangementSteps: null,
+              recording: {
+                contentHash: HASH_A,
+                durationSeconds: 100,
+                tempoBpm: 120,
+                sections: [],
+                beats: [],
+              },
+            },
+            {
+              itemId: "item-b",
+              position: 1,
+              userId: 1,
+              glueEnabled: true,
+              glueBeats: 4,
+              glueActiveTakeId: null,
+              updatedAt: "2026-11-22T10:01:00.000Z",
+              arrangementSteps: null,
+              recording: {
+                contentHash: HASH_B,
+                durationSeconds: 100,
+                tempoBpm: 120,
+                sections: [],
+                beats: [],
+              },
+            },
+          ],
+        ],
+      ])
+    );
+
+    vi.mocked(db.select).mockReturnValue(queryChain(takeRows) as never);
+    const tx = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce(queryChain([{ id: "songset-1" }]) as never)
+        .mockReturnValueOnce(
+          queryChain([
+            {
+              id: "item-a",
+              recordingHashPrefix: null,
+              updatedAt: new Date("2026-11-22T10:00:00.000Z"),
+            },
+          ]) as never
+        ),
+      update: vi.fn(() => updateChain((values) => updates.push(values))),
+    };
+    vi.mocked(mutationDb.transaction).mockImplementation(((
+      callback: (value: unknown) => Promise<unknown>
+    ) => callback(tx)) as never);
+    vi.mocked(db.query.songsetItems.findFirst).mockResolvedValue(
+      itemRow("item-a", 0, HASH_A) as never
+    );
+    vi.mocked(loadResolvedGlueJunctions).mockResolvedValue([junction({})]);
+  });
+
+  it("picks the newest ready take for the new Transition length", async () => {
+    // `loadNewestReadyGlueTake` orders by createdAt desc, so the fixture lists
+    // the newest row first.
+    takeRows = [
+      { id: TAKE_ID, createdAt: new Date("2026-11-22T10:00:00.000Z") },
+      { id: "take-older", createdAt: new Date("2026-11-20T10:00:00.000Z") },
+    ];
+    vi.mocked(db.select).mockReturnValue(queryChain(takeRows) as never);
+
+    await updateSongsetItem("item-a", "songset-1", 1, { glueBeats: 8 });
+
+    const glueUpdate = updates.find((values) => "glueBeats" in values);
+    expect(glueUpdate?.glueBeats).toBe(8);
+    expect(glueUpdate?.glueActiveTakeId).toBe(TAKE_ID);
+  });
+
+  it("clears the selection when no take exists for the new length", async () => {
+    takeRows = [];
+    vi.mocked(db.select).mockReturnValue(queryChain(takeRows) as never);
+
+    await updateSongsetItem("item-a", "songset-1", 1, { glueBeats: 2 });
+
+    const glueUpdate = updates.find((values) => "glueBeats" in values);
+    expect(glueUpdate?.glueBeats).toBe(2);
+    expect(glueUpdate?.glueActiveTakeId).toBeNull();
   });
 });

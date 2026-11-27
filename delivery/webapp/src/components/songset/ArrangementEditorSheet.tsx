@@ -86,6 +86,13 @@ import {
   retryGlueProcessingRequest,
 } from "@/lib/glue/client";
 import { glueErrorMessageKey } from "@/lib/glue/errors";
+import { parseGlueFailureCause } from "@/lib/glue/failure-cause";
+import { glueStaleMessage } from "@/lib/glue/stale-copy";
+import { glueAudioUrl } from "@/lib/audio/songset-audio";
+import {
+  buildGluePreviewWindow,
+  type GluePreviewClip,
+} from "@/lib/audio/glue-preview";
 import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
 import type { TranslationKey } from "@/lib/i18n/messages";
 import { useGlueJob } from "@/hooks/useGlueJob";
@@ -94,6 +101,7 @@ import {
   AlertTriangle,
   Copy,
   GripVertical,
+  Info,
   ListMusic,
   Loader2,
   Minus,
@@ -203,10 +211,6 @@ function glueStateKey(state: string): TranslationKey {
 /** Localized copy for a stable Glue failure code; unknown codes stay generic. */
 function glueFailureKey(code: string): TranslationKey {
   return glueErrorMessageKey(code) as TranslationKey;
-}
-
-function formatGlueSeconds(seconds: number): string {
-  return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
 }
 
 /** A draft step with a stable dnd identity so duplicates stay distinguishable. */
@@ -902,10 +906,11 @@ interface ArrangementWindow {
 
 /**
  * `kind` distinguishes the looped transition review, a one-shot bounds
- * audition, and the whole-arrangement preview the rail's button starts.
+ * audition, the whole-arrangement preview the rail's button starts, and a
+ * one-shot AI transition preview.
  */
 interface PlaybackWindow extends ArrangementWindow {
-  kind: "review" | "audition" | "arrangement";
+  kind: "review" | "audition" | "arrangement" | "glue";
 }
 
 interface StripGesture {
@@ -915,6 +920,8 @@ interface StripGesture {
   wasPlaying: boolean;
   /** Band start hit on pointer down; null when the tap missed every band. */
   bandStartSeconds: number | null;
+  /** AI take of the band hit, so only the junction's own band previews. */
+  bandTakeId: string | null;
   dragging: boolean;
   rectLeft: number;
   rectWidth: number;
@@ -982,6 +989,8 @@ interface StripBand {
   key: string;
   kind: "previous" | "step" | "next" | "glue";
   clipIndex: number | null;
+  /** The AI take this band draws; null for every non-Glue band. */
+  takeId: string | null;
   /** Full label: the band's tooltip and accessible name. */
   label: string;
   /** Compact text drawn inside the band. */
@@ -1049,6 +1058,13 @@ export function ArrangementEditorSheet({
   const [glueJobErrorCode, setGlueJobErrorCode] = useState<string | null>(null);
   const [glueJobActionPending, setGlueJobActionPending] = useState(false);
   const [glueCancelled, setGlueCancelled] = useState(false);
+  // Decoding the AI take before a preview clip starts; the button stays
+  // disabled so a second press cannot race the first.
+  const [gluePreviewLoading, setGluePreviewLoading] = useState(false);
+  // A stale take is listen-only: it is deliberately absent from the timeline,
+  // so its audition is a bare one-shot element rather than the transport.
+  const [glueStaleTakePlaying, setGlueStaleTakePlaying] = useState(false);
+  const glueStaleAudioRef = useRef<HTMLAudioElement | null>(null);
   // Bounds editing is one open transaction at a time: the id of the Step being
   // edited, its candidate (auditioned by the transport but never committed),
   // and whether the candidate is currently unsavable.
@@ -1264,6 +1280,8 @@ export function ArrangementEditorSheet({
     itemIndex >= 0 && itemIndex + 1 < items.length ? items[itemIndex + 1] : null;
   const previousTitle = previousItem?.song?.title || t("browse.unknownSong");
   const nextSongTitle = nextItem?.song?.title || t("browse.unknownSong");
+  // The rail needs this song's title before `songTitle` exists further down.
+  const glueFromTitle = item.song?.title || t("browse.unknownSong");
   // The saved item values are the source of truth; the draft only bridges a
   // PATCH and the parent's next render carrying its result. The draft is keyed
   // on the saved values it was based on, so any later server state (this PATCH
@@ -1282,11 +1300,12 @@ export function ArrangementEditorSheet({
   const glueEnabled = activeGlueDraft?.enabled ?? savedGlueEnabled;
   const glueBeats = activeGlueDraft?.beats ?? savedGlueBeats;
   const showGlueRail = Boolean(nextItem && songsetId && onUpdateGlue);
-  const glueTempoBpm = nextItem?.recording?.tempoBpm ?? null;
-  const glueGenerationSeconds =
-    glueTempoBpm !== null && glueTempoBpm > 0
-      ? Math.max(3, (glueBeats * 60) / glueTempoBpm)
-      : null;
+  // Both sides floor a transition at 3 s, so a fast junction stages more audio
+  // than the beat count implies; only that case needs a caption.
+  const glueBeatsBelowMinimumSeconds = (() => {
+    const tempoBpm = nextItem?.recording?.tempoBpm ?? null;
+    return tempoBpm !== null && tempoBpm > 0 && (glueBeats * 60) / tempoBpm < 3;
+  })();
   const resolvedOutgoing = glueForAdjacency(item.glue, item.id, nextItem?.id);
   const displayGlue = useMemo(
     () =>
@@ -1436,6 +1455,20 @@ export function ArrangementEditorSheet({
     ]
   );
 
+  const stopStaleTakeAudio = useCallback(() => {
+    const audio = glueStaleAudioRef.current;
+    if (audio !== null) {
+      audio.pause();
+      audio.src = "";
+    }
+    glueStaleAudioRef.current = null;
+    setGlueStaleTakePlaying(false);
+  }, []);
+
+  // A stale audition never outlives its item: the sheet remounts per item, and
+  // a change of item must not leave the previous junction sounding.
+  useEffect(() => stopStaleTakeAudio, [item.id, stopStaleTakeAudio]);
+
   // One subscription per Junction. Discovery on load comes from the
   // server-resolved active job; `watchGlueJob` also rediscovers on reconnect
   // and on tab visibility. A job started in this session is watched at once.
@@ -1543,13 +1576,19 @@ export function ArrangementEditorSheet({
     const result = await cancelGlueJobRequest(watchedGlueJobId);
     setGlueJobActionPending(false);
     if (!result.ok) {
+      if (result.error.code === "GLUE_PAID_NOT_CANCELLABLE") {
+        // The provider already has the request; the refreshed row hides Cancel,
+        // so this 409 is answered by a silent refresh, not by an error.
+        await refreshGlueJob();
+        return;
+      }
       setGlueJobErrorCode(result.error.code);
       return;
     }
     setGlueCancelled(true);
     setGlueJobId(null);
     await refreshGlueSelection();
-  }, [watchedGlueJobId, refreshGlueSelection]);
+  }, [watchedGlueJobId, refreshGlueSelection, refreshGlueJob]);
 
   const retryGlueJob = useCallback(async () => {
     if (watchedGlueJobId === null) return;
@@ -1580,7 +1619,7 @@ export function ArrangementEditorSheet({
     glueJob.restart();
     setGlueJobId(watchedGlueJobId);
     await refreshGlueJob();
-  }, [glueJob.status, glueJob.restart, watchedGlueJobId, refreshGlueJob]);
+  }, [glueJob, watchedGlueJobId, refreshGlueJob]);
 
   // A finished take becomes the selected one server-side; refresh the parent
   // so the Junction reads its new resolved state without a page reload.
@@ -1598,7 +1637,6 @@ export function ArrangementEditorSheet({
   const jobPhase = glueJobStatus?.phase ?? displayGlue?.activeJob?.phase ?? null;
   const jobActive =
     glueJobStatus?.active ?? Boolean(displayGlue?.activeJob);
-  const jobProviderContacted = glueJobStatus?.providerContacted ?? false;
 
   const currentGlueQuote =
     glueQuote !== null &&
@@ -1611,29 +1649,37 @@ export function ArrangementEditorSheet({
     glueQuoteError !== null && glueQuoteError.requestKey === glueQuoteRequestKey
       ? glueQuoteError.code
       : null;
-  const glueReason: TranslationKey | null = (() => {
+  const glueReasonText: string | null = (() => {
     if (!showGlueRail) return null;
-    if (isDirty) return "glue.reason.unsavedDraft";
+    if (isDirty) return t("glue.reason.unsavedDraft");
     if (!glueEnabled) return null;
     if (displayGlue?.unavailableReason) {
-      return glueReasonKey(displayGlue.unavailableReason);
+      return t(glueReasonKey(displayGlue.unavailableReason));
     }
     if (currentGlueQuoteError) {
-      return glueQuoteErrorKey(currentGlueQuoteError);
+      return t(glueQuoteErrorKey(currentGlueQuoteError));
     }
     const blocked = currentGlueQuote?.blockedSides[0];
     if (blocked) {
-      return blocked.code === "GLUE_COPYRIGHT_REJECTED"
-        ? "glue.reason.copyright"
-        : "glue.reason.tooShort";
+      return t(
+        blocked.code === "GLUE_COPYRIGHT_REJECTED"
+          ? "glue.reason.copyright"
+          : "glue.reason.tooShort"
+      );
     }
-    if (displayGlue?.state === "stale") return "glue.reason.stale";
+    if (displayGlue?.state === "stale") {
+      return glueStaleMessage(displayGlue.staleChange, t, {
+        from: glueFromTitle,
+        to: nextSongTitle,
+      });
+    }
     // A retried job in flight supersedes the Junction's last failure.
-    if (displayGlue?.state === "failed" && !jobActive) return "glue.reason.failed";
+    if (displayGlue?.state === "failed" && !jobActive) return t("glue.reason.failed");
     return null;
   })();
 
   const glueSelectedTake = displayGlue?.selectedTake ?? null;
+  const staleGlueTake = displayGlue?.staleTake ?? null;
   const glueAvailableTakes = displayGlue?.availableTakes ?? [];
   const glueResetLabel =
     currentGlueQuote?.quotaResetAt !== null &&
@@ -1643,6 +1689,20 @@ export function ArrangementEditorSheet({
           minute: "2-digit",
         }).format(new Date(currentGlueQuote.quotaResetAt))
       : null;
+  // The attempts left are decision-relevant but constant, so they live behind
+  // the info icon; the trigger's accessible name carries the same sentence for
+  // a popover that is never opened.
+  const glueRemainingLabel = currentGlueQuote
+    ? t("glue.remaining")
+        .replace("{remaining}", String(currentGlueQuote.quotaRemaining))
+        .replace("{limit}", String(currentGlueQuote.quotaLimit))
+    : null;
+  const glueResetSentence = glueResetLabel
+    ? t("glue.resetAt").replace("{time}", glueResetLabel)
+    : null;
+  const quotaSentence = currentGlueQuote
+    ? [glueRemainingLabel, glueResetSentence].filter(Boolean).join(" · ")
+    : "";
 
   const canCancelGlueJob =
     glueJobStatus !== null &&
@@ -1665,16 +1725,24 @@ export function ArrangementEditorSheet({
     glueJobStatus?.errorCode === "GLUE_COPYRIGHT_REJECTED";
   // The worker falls back to the error code when a provider body is empty or
   // unsafe to persist, so a detail identical to the code carries no reason.
+  const glueFailureCode =
+    glueJobErrorCode ??
+    (failedJobIsCurrent && !legacyCopyrightFailure ? glueJobStatus?.errorCode ?? null : null);
+  // The worker's junction cause is a token, not copy: parse it from the raw
+  // status detail and never render the string itself.
+  const glueFailureCause =
+    glueFailureCode === "GLUE_JUNCTION_AUDIO_UNAVAILABLE" ||
+    glueFailureCode === "GLUE_AUDIO_UNAVAILABLE"
+      ? parseGlueFailureCause(glueJobStatus?.errorDetail)
+      : null;
   const failedGlueDetail =
+    glueFailureCause === null &&
     failedJobIsCurrent &&
     !legacyCopyrightFailure &&
     glueJobStatus?.errorDetail != null &&
     glueJobStatus.errorDetail !== glueJobStatus.errorCode
       ? glueJobStatus.errorDetail
       : null;
-  const glueFailureCode =
-    glueJobErrorCode ??
-    (failedJobIsCurrent && !legacyCopyrightFailure ? glueJobStatus?.errorCode ?? null : null);
   // A dispatch failure never reached the worker, so re-enqueueing it is free
   // even though the durable `retry_kind` is unset.
   const dispatchFailed = failedJobIsCurrent && glueJobStatus?.phase === "dispatch-failed";
@@ -1696,6 +1764,34 @@ export function ArrangementEditorSheet({
     displayGlue.unavailableReason === null &&
     !isDirty &&
     nextItem !== null;
+  // Each cause names the input that brings Create back, because a junction
+  // failure is not retryable until something changes.
+  const glueFailureText: string | null = (() => {
+    if (glueFailureCode === null) return null;
+    const cause = glueFailureCause;
+    switch (cause?.kind) {
+      case "unsupported-window":
+        return cause.supportedBeats !== null
+          ? t("glue.error.junctionTooLong").replace(
+              "{beats}",
+              String(cause.supportedBeats)
+            )
+          : t("glue.error.junctionTooLongNoBeats");
+      case "insufficient-search-source":
+        return t("glue.error.junctionGuideShort");
+      case "source-audio-unavailable":
+      case "decode-failed": {
+        const song = cause.side === "A" ? glueFromTitle : nextSongTitle;
+        return t(
+          cause.kind === "decode-failed"
+            ? "glue.error.junctionSourceUnreadable"
+            : "glue.error.junctionSourceUnavailable"
+        ).replace("{song}", song);
+      }
+      default:
+        return t(glueFailureKey(glueFailureCode));
+    }
+  })();
   const hasSelectedGlueTake = glueSelectedTake !== null;
   const shortGlueJobId = watchedGlueJobId?.slice(0, 8) ?? "";
 
@@ -1713,6 +1809,39 @@ export function ArrangementEditorSheet({
         : null,
     [previousItem, timeline]
   );
+
+  // The AI take is staged before the incoming item's first clip, so the
+  // preview needs the junction window plus one bar of context on each side.
+  const gluePreviewWindow = useMemo<GluePreviewClip | null>(() => {
+    const glueWindow = nextTimelineItem?.glueWindowBefore ?? null;
+    if (!glueWindow || !songTimelineItem || !nextTimelineItem) return null;
+    const outgoingClips = songTimelineItem.clips;
+    const incomingClips = nextTimelineItem.clips;
+    if (outgoingClips.length === 0 || incomingClips.length === 0) return null;
+    return buildGluePreviewWindow({
+      glue: {
+        startSeconds: glueWindow.startSeconds,
+        endSeconds: glueWindow.endSeconds,
+      },
+      outgoing: {
+        startSeconds: outgoingClips[0].startSeconds,
+        endSeconds: outgoingClips[outgoingClips.length - 1].endSeconds,
+        tempoBpm: item.recording?.tempoBpm ?? null,
+      },
+      incoming: {
+        startSeconds: incomingClips[0].startSeconds,
+        endSeconds: incomingClips[incomingClips.length - 1].endSeconds,
+        tempoBpm: nextItem?.recording?.tempoBpm ?? null,
+      },
+      limitSeconds: timeline.totalSeconds,
+    });
+  }, [
+    item.recording?.tempoBpm,
+    nextItem?.recording?.tempoBpm,
+    nextTimelineItem,
+    songTimelineItem,
+    timeline.totalSeconds,
+  ]);
 
   // The previous song is context only through the label its final Step carries;
   // an untouched or unreadable sibling plays as "Full song".
@@ -1807,6 +1936,60 @@ export function ArrangementEditorSheet({
   ]);
 
   const position = preview.timelinePositionSeconds;
+
+  /** Listen to the take the current settings no longer match (one-shot). */
+  const toggleStaleTakeAudio = useCallback(() => {
+    const take = displayGlue?.staleTake ?? null;
+    if (take === null) return;
+    const playing = glueStaleAudioRef.current;
+    if (playing !== null && !playing.paused) {
+      stopStaleTakeAudio();
+      return;
+    }
+    stopStaleTakeAudio();
+    // One transport at a time: the stale take never doubles the preview.
+    preview.pause();
+    const audio = new Audio(glueAudioUrl(take.id));
+    glueStaleAudioRef.current = audio;
+    const reportFallback = () => {
+      setPreviewError(
+        t("glue.audioFallback")
+          .replace("{from}", glueFromTitle)
+          .replace("{to}", nextSongTitle)
+      );
+    };
+    const finish = () => {
+      if (glueStaleAudioRef.current === audio) stopStaleTakeAudio();
+    };
+    audio.onended = finish;
+    audio.onerror = () => {
+      finish();
+      reportFallback();
+    };
+    setGlueStaleTakePlaying(true);
+    void audio.play().catch(() => {
+      // Autoplay-blocked is the same dead end as a failed load: the take cannot
+      // sound, so say so instead of showing a pause button over silence.
+      finish();
+      reportFallback();
+    });
+  }, [
+    displayGlue?.staleTake,
+    glueFromTitle,
+    nextSongTitle,
+    preview,
+    stopStaleTakeAudio,
+    t,
+  ]);
+
+  // The arrangement transport wins: starting it, or stopping it, ends the
+  // stale take, so the Stop button silences both.
+  useEffect(() => {
+    if (preview.status !== "playing" && preview.status !== "idle") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- silencing the one-shot element is this effect's external job; the flag mirrors it
+    stopStaleTakeAudio();
+  }, [preview.status, stopStaleTakeAudio]);
+
   // The strip always shows the whole arrangement window, never the shorter
   // review or audition window that currently governs playback.
   const windowDurationSeconds = arrangementWindow
@@ -1895,7 +2078,7 @@ export function ArrangementEditorSheet({
     const handled = boundaryHandledRef.current;
     if (handled && handled.key === windowKey && handled.pass === reviewPass) return;
     boundaryHandledRef.current = { key: windowKey, pass: reviewPass };
-    if (playbackWindow.kind === "audition") {
+    if (playbackWindow.kind === "audition" || playbackWindow.kind === "glue") {
       preview.pause();
       return;
     }
@@ -1990,6 +2173,76 @@ export function ArrangementEditorSheet({
     [boundsEditorId, isPreviewAvailable, isSaving, item.recording?.tempoBpm, preview, songTimelineItem]
   );
 
+  /**
+   * Play the AI transition with one bar of context on each side. The incoming
+   * item (which owns the take) is decoded first: `doPlay` only prepares the item
+   * at the position, so a cold cache would otherwise reach the junction before
+   * its AI audio exists.
+   */
+  const startGluePreview = useCallback(async () => {
+    if (isSaving || !isPreviewAvailable || boundsEditorId !== null) return;
+    const win = gluePreviewWindow;
+    if (win === null) return;
+    setReviewClipIndex(null);
+    setReviewPass(1);
+    setReviewCompleted(false);
+    setArrangementCompleted(false);
+    boundaryHandledRef.current = null;
+    setPreviewError(null);
+    setGluePreviewLoading(true);
+    try {
+      await preview.prepareAt(win.startSeconds);
+    } catch {
+      // Let startAtSeconds report through the hook's own error path.
+    } finally {
+      setGluePreviewLoading(false);
+    }
+    // The window is already clamped to the transport total, so a junction that
+    // reaches the Songset end still ends and the transport settles.
+    setPlaybackWindow({
+      kind: "glue",
+      startSeconds: win.startSeconds,
+      endSeconds: win.endSeconds,
+      includesPreviousTail: false,
+      includesNextOpening: false,
+      actualOpeningSeconds: 0,
+    });
+    void preview.startAtSeconds(win.startSeconds).catch(() => {
+      // The hook reports failures through onPreviewError.
+    });
+  }, [
+    boundsEditorId,
+    gluePreviewWindow,
+    isPreviewAvailable,
+    isSaving,
+    preview,
+  ]);
+
+  const gluePreviewPlaying =
+    preview.status === "playing" && playbackWindow?.kind === "glue";
+  // A dirty draft suppresses the take from the timeline, so the clip window
+  // disappears too; every other reason is a plain transport guard.
+  const gluePreviewStartable =
+    !isDirty &&
+    isPreviewAvailable &&
+    boundsEditorId === null &&
+    gluePreviewWindow !== null;
+
+  /**
+   * The AI band of this junction starts the bounded clip; every other band (and
+   * this one when the clip cannot start) keeps the plain seek, so a tap always
+   * moves the playhead.
+   */
+  const startJunctionBandPreview = useCallback(
+    (takeId: string | null): boolean => {
+      if (takeId === null || !gluePreviewStartable) return false;
+      if (takeId !== nextTimelineItem?.glueWindowBefore?.takeId) return false;
+      void startGluePreview();
+      return true;
+    },
+    [gluePreviewStartable, nextTimelineItem, startGluePreview]
+  );
+
   const handlePreviewToggle = useCallback(() => {
     if (
       !isPreviewAvailable ||
@@ -2047,16 +2300,15 @@ export function ArrangementEditorSheet({
   const handleStripPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !arrangementWindow) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const bandStartAttr =
-      (event.target as HTMLElement | null)
-        ?.closest("[data-band-start-seconds]")
-        ?.getAttribute("data-band-start-seconds") ?? null;
+    const band = (event.target as HTMLElement | null)?.closest("[data-band-start-seconds]");
+    const bandStartAttr = band?.getAttribute("data-band-start-seconds") ?? null;
     stripGestureRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       wasPlaying: preview.status === "playing",
       bandStartSeconds: bandStartAttr === null ? null : Number(bandStartAttr),
+      bandTakeId: band?.getAttribute("data-band-take-id") ?? null,
       dragging: false,
       rectLeft: rect.left,
       rectWidth: rect.width,
@@ -2102,7 +2354,7 @@ export function ArrangementEditorSheet({
     suppressStripClickRef.current = true;
     if (!gesture) return;
     if (!gesture.dragging) {
-      if (gesture.bandStartSeconds !== null) {
+      if (!startJunctionBandPreview(gesture.bandTakeId) && gesture.bandStartSeconds !== null) {
         seekWithinWindow(gesture.bandStartSeconds);
       }
       return;
@@ -2130,6 +2382,7 @@ export function ArrangementEditorSheet({
     // Pointer taps are handled on pointer up; only keyboard activation
     // (`detail === 0`) needs the click path, so a drag never seeks twice.
     if (event.detail !== 0) return;
+    if (startJunctionBandPreview(event.currentTarget.dataset.bandTakeId ?? null)) return;
     const bandStart = event.currentTarget.dataset.bandStartSeconds;
     if (bandStart === undefined) return;
     seekWithinWindow(Number(bandStart));
@@ -2645,6 +2898,7 @@ export function ArrangementEditorSheet({
         key: `glue-${window.takeId}`,
         kind: "glue",
         clipIndex: null,
+        takeId: window.takeId,
         label: t("glue.title"),
         shortLabel: t("glue.title"),
         startSeconds: start,
@@ -2658,6 +2912,7 @@ export function ArrangementEditorSheet({
           key: "previous",
           kind: "previous",
           clipIndex: null,
+          takeId: null,
           label: previousTitle,
           shortLabel: t("arrangement.preview.stripPrevious").replace(
             "{song}",
@@ -2676,6 +2931,7 @@ export function ArrangementEditorSheet({
         key: `clip-${index}`,
         kind: "step",
         clipIndex: index,
+        takeId: null,
         label: labelForDraftIndex(index) ?? "",
         shortLabel: shortLabelForDraftIndex(index) ?? "",
         startSeconds: start,
@@ -2689,6 +2945,7 @@ export function ArrangementEditorSheet({
           key: "next",
           kind: "next",
           clipIndex: null,
+          takeId: null,
           label: `${nextSongTitle} · ${t("arrangement.preview.opening")}`,
           shortLabel: t("arrangement.preview.stripNextOpening")
             .replace("{label}", t("arrangement.preview.opening"))
@@ -2967,12 +3224,37 @@ export function ArrangementEditorSheet({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <h4
-                              id="arrangement-glue-title"
-                              className="text-xs font-semibold"
-                            >
-                              {t("glue.title")}
-                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4
+                                id="arrangement-glue-title"
+                                className="text-xs font-semibold"
+                              >
+                                {t("glue.title")}
+                              </h4>
+                              {currentGlueQuote && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      data-testid="arrangement-glue-quota-info"
+                                      aria-label={quotaSentence}
+                                      title={quotaSentence}
+                                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                    >
+                                      <Info className="size-3.5" aria-hidden="true" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    side="top"
+                                    align="end"
+                                    className="max-w-70 space-y-0.5 p-2 font-mono text-[11px] tabular-nums"
+                                  >
+                                    <p>{glueRemainingLabel}</p>
+                                    {glueResetSentence && <p>{glueResetSentence}</p>}
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </div>
                             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
                               {t("glue.toggle").replace("{song}", nextSongTitle)}
                             </p>
@@ -3037,63 +3319,21 @@ export function ArrangementEditorSheet({
                               ))}
                             </div>
 
-                            {glueGenerationSeconds !== null && (
+                            {glueBeatsBelowMinimumSeconds && (
                               <p
                                 className="text-[11px] leading-relaxed text-muted-foreground"
-                                data-testid="arrangement-glue-seconds"
+                                data-testid="arrangement-glue-minimum-length"
                               >
-                                {t("glue.generatedLength").replace(
-                                  "{seconds}",
-                                  formatGlueSeconds(glueGenerationSeconds)
-                                )}
+                                {t("glue.minimumLength")}
                               </p>
                             )}
 
-                            {currentGlueQuote && (
-                              <div
-                                className="space-y-0.5 font-mono text-[11px] tabular-nums text-muted-foreground"
-                                data-testid="arrangement-glue-quote"
-                              >
-                                <p>
-                                  {t("glue.remaining")
-                                    .replace(
-                                      "{remaining}",
-                                      String(currentGlueQuote.quotaRemaining)
-                                    )
-                                    .replace(
-                                      "{limit}",
-                                      String(currentGlueQuote.quotaLimit)
-                                    )}
-                                </p>
-                                {glueResetLabel && (
-                                  <p>
-                                    {t("glue.resetAt").replace(
-                                      "{time}",
-                                      glueResetLabel
-                                    )}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-
-                            {displayGlue && (
+                            {displayGlue && displayGlue.state !== "stale" && (
                               <p
                                 className="text-[11px] leading-relaxed text-foreground/80"
                                 data-testid="arrangement-glue-state"
                               >
                                 {t(glueStateKey(displayGlue.state))}
-                              </p>
-                            )}
-
-                            {glueSelectedTake && (
-                              <p
-                                className="text-[11px] leading-relaxed text-foreground/80"
-                                data-testid="arrangement-glue-selected"
-                              >
-                                {t("glue.selected").replace(
-                                  "{seconds}",
-                                  formatGlueSeconds(glueSelectedTake.seconds)
-                                )}
                               </p>
                             )}
 
@@ -3136,18 +3376,6 @@ export function ArrangementEditorSheet({
                                       {t("glue.takes.option")
                                         .replace("{ordinal}", String(take.ordinal))
                                         .replace(
-                                          "{status}",
-                                          t(
-                                            take.status === "check"
-                                              ? "glue.takes.check"
-                                              : "glue.takes.ready"
-                                          )
-                                        )
-                                        .replace(
-                                          "{seconds}",
-                                          formatGlueSeconds(take.seconds)
-                                        )
-                                        .replace(
                                           "{time}",
                                           new Intl.DateTimeFormat(
                                             locale === "zh-Hant" ? "zh-Hant" : "en",
@@ -3158,21 +3386,124 @@ export function ArrangementEditorSheet({
                                               minute: "2-digit",
                                             }
                                           ).format(new Date(take.createdAt))
-                                        )}
+                                        ) +
+                                        (take.status === "check"
+                                          ? t("glue.takes.checkSuffix")
+                                          : "")}
                                     </option>
                                   ))}
                                 </select>
                               </div>
                             )}
 
-                            {glueReason && (
+                            {staleGlueTake !== null && (
+                              <div
+                                className="flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1"
+                                data-testid="arrangement-glue-stale-take"
+                              >
+                                <p className="min-w-0 text-[11px] leading-relaxed text-amber-700">
+                                  {(staleGlueTake.beats !== null
+                                    ? t("glue.takes.mismatchBeats")
+                                        .replace("{ordinal}", String(staleGlueTake.ordinal))
+                                        .replace("{beats}", String(staleGlueTake.beats))
+                                    : t("glue.takes.mismatch").replace(
+                                        "{ordinal}",
+                                        String(staleGlueTake.ordinal)
+                                      ))}
+                                </p>
+                                <button
+                                  type="button"
+                                  data-testid="arrangement-glue-stale-play"
+                                  aria-label={
+                                    glueStaleTakePlaying
+                                      ? t("arrangement.preview.pause")
+                                      : t("arrangement.preview.play")
+                                  }
+                                  onClick={toggleStaleTakeAudio}
+                                  className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted"
+                                >
+                                  {glueStaleTakePlaying ? (
+                                    <Pause className="size-3" />
+                                  ) : (
+                                    <Play className="size-3" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+
+                            {glueReasonText !== null && (
                               <p
                                 role="status"
                                 className="text-[11px] leading-relaxed text-amber-600"
                                 data-testid="arrangement-glue-reason"
                               >
-                                {t(glueReason)}
+                                {glueReasonText}
                               </p>
+                            )}
+
+                            {displayGlue?.state === "stale" &&
+                              !isDirty &&
+                              glueAvailableTakes.length > 0 && (
+                                <button
+                                  type="button"
+                                  data-testid="arrangement-glue-use-matching"
+                                  disabled={glueSaving}
+                                  onClick={() =>
+                                    void updateGlue({
+                                      glueActiveTakeId:
+                                        glueAvailableTakes[glueAvailableTakes.length - 1]
+                                          .id,
+                                    })
+                                  }
+                                  className="h-7 w-full rounded-md border border-border text-[11px] text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                                >
+                                  {t("glue.staleHeal")}
+                                </button>
+                              )}
+
+                            {glueSelectedTake !== null && (
+                              <div className="space-y-1">
+                                <button
+                                  type="button"
+                                  data-testid="arrangement-glue-preview"
+                                  disabled={
+                                    isDirty ||
+                                    !isPreviewAvailable ||
+                                    boundsEditorId !== null ||
+                                    gluePreviewWindow === null ||
+                                    gluePreviewLoading
+                                  }
+                                  onClick={() => {
+                                    if (gluePreviewPlaying) {
+                                      preview.pause();
+                                      return;
+                                    }
+                                    void startGluePreview();
+                                  }}
+                                  className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border text-[11px] text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                                >
+                                  {gluePreviewLoading ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : gluePreviewPlaying ? (
+                                    <Pause className="size-3" />
+                                  ) : (
+                                    <Play className="size-3" />
+                                  )}
+                                  {gluePreviewLoading
+                                    ? t("glue.previewLoading")
+                                    : gluePreviewPlaying
+                                      ? t("glue.previewPause")
+                                      : t("glue.previewClip")}
+                                </button>
+                                {isDirty && (
+                                  <p
+                                    className="text-[11px] leading-relaxed text-muted-foreground"
+                                    data-testid="arrangement-glue-preview-hint"
+                                  >
+                                    {t("glue.previewSaveFirst")}
+                                  </p>
+                                )}
+                              </div>
                             )}
 
                             {canGenerateGlue && (
@@ -3317,14 +3648,6 @@ export function ArrangementEditorSheet({
                                   : t("glue.job.cancel")}
                               </button>
                             )}
-                            {jobActive && jobProviderContacted && (
-                              <p
-                                className="text-[11px] leading-relaxed text-amber-600"
-                                data-testid="arrangement-glue-contacted"
-                              >
-                                {t("glue.job.contacted")}
-                              </p>
-                            )}
                           </div>
                         )}
 
@@ -3345,7 +3668,7 @@ export function ArrangementEditorSheet({
                           >
                             <AlertTriangle className="size-4" />
                             <AlertDescription>
-                              {t(glueFailureKey(glueFailureCode))}
+                              {glueFailureText}
                               {failedGlueDetail !== null && (
                                 <span
                                   className="mt-1 block font-normal text-muted-foreground"
@@ -3552,6 +3875,8 @@ export function ArrangementEditorSheet({
                               type="button"
                               key={band.key}
                               data-band-start-seconds={band.startSeconds}
+                              data-band-kind={band.kind}
+                              data-band-take-id={band.takeId ?? undefined}
                               data-clip-index={band.clipIndex ?? undefined}
                               onClick={handleBandClick}
                               title={band.label}

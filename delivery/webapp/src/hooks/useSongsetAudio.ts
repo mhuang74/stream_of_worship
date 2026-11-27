@@ -76,6 +76,8 @@ export interface UseSongsetAudioResult {
   stop: () => void;
   seek: (seconds: number) => void;
   startAtSeconds: (seconds: number) => Promise<void>;
+  /** Decodes the item at `seconds` plus its successor's junction before playing. */
+  prepareAt: (seconds: number) => Promise<void>;
   /** Recreates the session at the current position and replays. */
   retry: () => Promise<void>;
   /** Re-fetches the same immutable take; rebuilds only when it is reachable. */
@@ -441,6 +443,32 @@ export function useSongsetAudio(
     [seek, play],
   );
 
+  const prepareAt = useCallback(
+    async (seconds: number) => {
+      if (!active) return;
+      // The first preview after opening the sheet has no session yet, and a
+      // preview started without one only decodes the outgoing item. Build the
+      // session here so the clip is ready before the transport starts, exactly
+      // as a later preview finds it. Validation failures stay `play()`'s job.
+      if (validationError !== null) return;
+      const existing = sessionRef.current;
+      // A session that failed is `play()`'s to replace: tearing it down here
+      // would leave `stoppedRef` set and silence the fresh session until the
+      // transport actually starts.
+      if (existing !== null) {
+        if (existing.getError()) return;
+        await existing.prepareAt(seconds);
+        return;
+      }
+      const session = createSongsetAudioSession(effectiveItems, {
+        onGlueFailure: (failure) => handleGlueFailureRef.current(failure),
+      });
+      attachSession(session, itemsKey);
+      await session.prepareAt(seconds);
+    },
+    [active, attachSession, effectiveItems, itemsKey, validationError],
+  );
+
   const retry = useCallback(async () => {
     if (!active) return;
     const position =
@@ -549,6 +577,7 @@ export function useSongsetAudio(
     stop,
     seek,
     startAtSeconds,
+    prepareAt,
     retry,
     retryGlueAudio,
   };

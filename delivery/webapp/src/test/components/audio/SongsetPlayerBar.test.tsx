@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   seek: vi.fn(),
   startAtSeconds: vi.fn(),
+  prepareAt: vi.fn(),
   retry: vi.fn(),
   retryGlueAudio: vi.fn(),
   close: vi.fn(),
@@ -103,6 +104,7 @@ function makeAudio(overrides: Partial<UseSongsetAudioResult> = {}): UseSongsetAu
     stop: mocks.stop,
     seek: mocks.seek,
     startAtSeconds: mocks.startAtSeconds,
+    prepareAt: mocks.prepareAt,
     retry: mocks.retry,
     retryGlueAudio: mocks.retryGlueAudio,
     ...overrides,
@@ -602,6 +604,36 @@ describe("SongsetPlayerBar", () => {
         left: `${(10 / total) * 100}%`,
         width: `${(3 / total) * 100}%`,
       });
+    });
+
+    it("plays the transition from its own button without swallowing the slider", async () => {
+      mocks.prepareAt.mockReset().mockResolvedValue(undefined);
+      mocks.startAtSeconds.mockReset().mockResolvedValue(undefined);
+      mocks.seek.mockReset();
+      setSession({
+        items: gluedItems,
+        timeline: gluedTimeline,
+        audio: { totalSeconds: gluedTimeline.totalSeconds },
+      });
+      render(<SongsetPlayerBar />);
+
+      const preview = screen.getByTestId("songset-glue-preview");
+      expect(preview.getAttribute("data-take-id")).toBe("take-1");
+      expect(preview.getAttribute("aria-label")).toBe(
+        "Play the AI transition from Amazing Grace to Second Song"
+      );
+      fireEvent.click(preview);
+      // One bar of context at the outgoing 120 BPM is 6 s before the window.
+      await waitFor(() => expect(mocks.prepareAt).toHaveBeenCalled());
+      expect(mocks.prepareAt).toHaveBeenCalledWith(4);
+      await waitFor(() => expect(mocks.startAtSeconds).toHaveBeenCalledWith(4));
+
+      // The visual band inside the slider still seeks through the slider: the
+      // overlay button sits above it but carries no gesture of its own.
+      const slider = screen.getByTestId("songset-seek");
+      stubSeekRect(slider);
+      fireEvent.pointerDown(slider, { clientX: 400, pointerId: 1 });
+      expect(mocks.seek).toHaveBeenCalled();
     });
 
     it("shows a persistent A → B warning with a local retry", () => {

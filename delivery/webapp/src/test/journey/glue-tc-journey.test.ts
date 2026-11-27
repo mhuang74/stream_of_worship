@@ -419,6 +419,7 @@ describe("AI transition journey over the Traditional Chinese fixture", () => {
           fromTitle: fixture.songs[0].title,
           toTitle: fixture.songs[1].title,
           reasonCode: "GLUE_NOT_READY",
+          staleChange: null,
           jobId: null,
           jobPhase: null,
           retryKind: null,

@@ -10,6 +10,15 @@ vi.mock("@/contexts/SongsetListenContext", () => ({
   useSongsetListen: () => ({ audio: { pause: vi.fn() } }),
 }));
 
+const audioMocks = vi.hoisted(() => ({
+  play: vi.fn().mockResolvedValue(undefined),
+  pause: vi.fn(),
+  stop: vi.fn(),
+  seek: vi.fn(),
+  startAtSeconds: vi.fn().mockResolvedValue(undefined),
+  prepareAt: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/hooks/useSongsetAudio", () => ({
   useSongsetAudio: () => ({
     status: "idle",
@@ -17,13 +26,9 @@ vi.mock("@/hooks/useSongsetAudio", () => ({
     timelinePositionSeconds: 0,
     totalSeconds: 120,
     progress: null,
-    play: vi.fn().mockResolvedValue(undefined),
-    pause: vi.fn(),
-    stop: vi.fn(),
-    seek: vi.fn(),
-    startAtSeconds: vi.fn().mockResolvedValue(undefined),
     glueFailures: [],
     retryGlueAudio: vi.fn().mockResolvedValue(true),
+    ...audioMocks,
   }),
 }));
 
@@ -198,35 +203,39 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     expect(screen.queryByTestId("arrangement-glue")).toBeNull();
   });
 
-  it("shows the switch named for the next Song and the computed seconds", async () => {
+  it("shows the switch named for the next Song and the minimum-length caption", async () => {
     renderSheet({});
     expect(screen.getByTestId("arrangement-glue")).toBeTruthy();
     expect(
       screen.getByText(/AI transition to How Great Thou Art/)
     ).toBeTruthy();
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    // 4 beats at 120 BPM is 2 s, raised to the 3 s floor: the caption says so
+    // instead of printing a length the junction does not actually stage.
     await waitFor(() =>
-      expect(screen.getByTestId("arrangement-glue-seconds").textContent).toContain(
-        "3"
-      )
+      expect(
+        screen.getByTestId("arrangement-glue-minimum-length").textContent
+      ).toContain("about 3 s")
     );
-    // 4 beats at 120 BPM is 2 s, raised to the 3 s floor.
     expect(screen.getByTestId("arrangement-glue-beats-4").getAttribute("aria-pressed")).toBe(
       "true"
     );
   });
 
-  it("PATCHes the switch and shows the server quote, remaining count, and reset", async () => {
+  it("PATCHes the switch and puts the remaining count and reset behind the info icon", async () => {
     const onUpdateGlue = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onUpdateGlue });
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
     await waitFor(() =>
       expect(onUpdateGlue).toHaveBeenCalledWith("item-1", { glueEnabled: true })
     );
-    const quote = await screen.findByTestId("arrangement-glue-quote");
-    expect(quote.textContent).not.toContain("credits");
-    expect(quote.textContent).toContain("3 of 5 AI transition attempts remaining");
-    expect(quote.textContent).toContain("Resets at");
+    const info = await screen.findByTestId("arrangement-glue-quota-info");
+    const label = info.getAttribute("aria-label") ?? "";
+    expect(label).toContain("3 of 5 AI transition attempts remaining");
+    expect(label).toContain("Resets at");
+    expect(label).not.toContain("credits");
+    // Nothing on the rail repeats the numbers outside the popover.
+    expect(screen.queryByText(/attempts remaining/)).toBeNull();
   });
 
   it("rolls the switch back when the PATCH fails", async () => {
@@ -275,7 +284,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     );
     renderSheet({});
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
-    const quote = await screen.findByTestId("arrangement-glue-quote");
+    const quote = await screen.findByTestId("arrangement-glue-quota-info");
     expect(quote.textContent).not.toContain("credits");
     expect(calls).toBeGreaterThan(1);
   });
@@ -296,7 +305,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     expect(
       await screen.findByText(/Could not load the AI transition details/, {}, { timeout: 5000 })
     ).toBeTruthy();
-    expect(screen.queryByTestId("arrangement-glue-quote")).toBeNull();
+    expect(screen.queryByTestId("arrangement-glue-quota-info")).toBeNull();
   });
 
   it("does not request a quote until the enabling PATCH lands", async () => {
@@ -307,7 +316,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     await waitFor(() => expect(onUpdateGlue).toHaveBeenCalled());
     expect(quoteCallCount()).toBe(0);
     patch.resolve();
-    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+    expect(await screen.findByTestId("arrangement-glue-quota-info")).toBeTruthy();
   });
 
   it("retries a quote refused because the enable was not visible yet", async () => {
@@ -326,7 +335,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     );
     renderSheet({});
     fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
-    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+    expect(await screen.findByTestId("arrangement-glue-quota-info")).toBeTruthy();
     expect(calls).toBe(2);
     expect(screen.queryByText(/Could not load the AI transition details/)).toBeNull();
   });
@@ -361,7 +370,7 @@ describe("ArrangementEditorSheet AI transition rail", () => {
         successor(),
       ])
     );
-    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+    expect(await screen.findByTestId("arrangement-glue-quota-info")).toBeTruthy();
     expect(
       screen.queryByText("Fix the arrangement before creating an AI transition.")
     ).toBeNull();
@@ -369,28 +378,185 @@ describe("ArrangementEditorSheet AI transition rail", () => {
   });
 
   it("shows the selected AI transition and its plain-language check warning", async () => {
+    const take = {
+      id: TAKE_ID,
+      ordinal: 1,
+      seconds: 2.8,
+      beats: 4,
+      r2Key: "glues/take.wav",
+      descriptorKey: "a".repeat(64),
+      status: "check" as const,
+      reasons: ["ending-energy"],
+    };
     renderSheet({
       items: [
         makeItem({
           glueEnabled: true,
           glue: junction({
-            selectedTake: {
-              id: TAKE_ID,
-              ordinal: 1,
-              seconds: 2.8,
-              r2Key: "glues/take.wav",
-              descriptorKey: "a".repeat(64),
-              status: "check",
-              reasons: ["ending-energy"],
-            },
+            selectedTake: take,
+            availableTakes: [{ ...take, createdAt: "2026-11-22T09:00:00.000Z" }],
           }),
         }),
         successor(),
       ],
     });
-    expect(screen.getByTestId("arrangement-glue-selected").textContent).toContain(
-      "2.8"
-    );
+    const select = screen.getByTestId("arrangement-glue-takes");
+    expect(select.textContent).toContain("Version 1");
+    expect(select.textContent).toContain("needs a listen");
     expect(screen.getByText(/Give it a listen/)).toBeTruthy();
+  });
+
+  it("names the beats change and offers the matching version for free", async () => {
+    const staleTake = {
+      id: TAKE_ID,
+      ordinal: 1,
+      seconds: 5,
+      beats: 4,
+      r2Key: "glues/old.wav",
+      descriptorKey: "a".repeat(64),
+      status: "ok" as const,
+      reasons: [],
+      createdAt: "2026-11-22T09:00:00.000Z",
+    };
+    const matching = {
+      id: "take-matching",
+      ordinal: 2,
+      seconds: 5,
+      beats: 8,
+      r2Key: "glues/new.wav",
+      descriptorKey: "c".repeat(64),
+      status: "ok" as const,
+      reasons: [],
+      createdAt: "2026-11-22T11:00:00.000Z",
+    };
+    // The heal PATCH never settles, so the button's saving state is observable.
+    const onUpdateGlue = vi.fn(() => new Promise<void>(() => {}));
+    renderSheet({
+      items: [
+        makeItem({
+          glueEnabled: true,
+          glueBeats: 8,
+          glue: junction({
+            glueBeats: 8,
+            state: "stale",
+            staleChange: { change: "beats", storedBeats: 4, currentBeats: 8 },
+            staleTake,
+            availableTakes: [matching],
+          }),
+        }),
+        successor(),
+      ],
+      onUpdateGlue,
+    });
+
+    expect(screen.getByTestId("arrangement-glue-reason").textContent).toContain(
+      "Transition length changed from 4 to 8 beats"
+    );
+    const heal = screen.getByTestId("arrangement-glue-use-matching");
+    fireEvent.click(heal);
+    expect(onUpdateGlue).toHaveBeenCalledWith("item-1", {
+      glueActiveTakeId: "take-matching",
+    });
+    await waitFor(() => expect(heal.hasAttribute("disabled")).toBe(true));
+  });
+
+  it("offers no matching version when the stored take is the only one", () => {
+    renderSheet({
+      items: [
+        makeItem({
+          glueEnabled: true,
+          glueBeats: 8,
+          glue: junction({
+            glueBeats: 8,
+            state: "stale",
+            staleChange: { change: "beats", storedBeats: 4, currentBeats: 8 },
+            staleTake: {
+              id: TAKE_ID,
+              ordinal: 1,
+              seconds: 5,
+              beats: 4,
+              r2Key: "glues/old.wav",
+              descriptorKey: "a".repeat(64),
+              status: "ok",
+              reasons: [],
+              createdAt: "2026-11-22T09:00:00.000Z",
+            },
+            availableTakes: [],
+          }),
+        }),
+        successor(),
+      ],
+    });
+    expect(screen.getByTestId("arrangement-glue-reason").textContent).toContain(
+      "Transition length changed from 4 to 8 beats"
+    );
+    expect(screen.queryByTestId("arrangement-glue-use-matching")).toBeNull();
+  });
+
+  it("pauses the preview transport before auditioning a stale take", async () => {
+    const elementPlay = vi.fn();
+    const elementPause = vi.fn();
+    vi.stubGlobal(
+      "Audio",
+      class {
+        // A real element flips `paused`, which is what the toggle reads to
+        // decide between starting and stopping the audition.
+        paused = true;
+        src = "";
+        onended: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        play = vi.fn(function (this: { paused: boolean }) {
+          this.paused = false;
+          elementPlay();
+          return Promise.resolve();
+        });
+        pause = vi.fn(function (this: { paused: boolean }) {
+          this.paused = true;
+          elementPause();
+        });
+      }
+    );
+    renderSheet({
+      items: [
+        makeItem({
+          glueEnabled: true,
+          glueBeats: 8,
+          glue: junction({
+            glueBeats: 8,
+            state: "stale",
+            staleChange: { change: "beats", storedBeats: 4, currentBeats: 8 },
+            staleTake: {
+              id: TAKE_ID,
+              ordinal: 1,
+              seconds: 5,
+              beats: 4,
+              r2Key: "glues/old.wav",
+              descriptorKey: "a".repeat(64),
+              status: "ok",
+              reasons: [],
+              createdAt: "2026-11-22T09:00:00.000Z",
+            },
+            availableTakes: [],
+          }),
+        }),
+        successor(),
+      ],
+    });
+
+    fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
+    // The two transports never sound together: the preview is paused first.
+    expect(audioMocks.pause).toHaveBeenCalled();
+    expect(elementPlay).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
+    ).toBe("Pause preview");
+
+    // Tapping while it sounds stops the element instead of restarting it.
+    fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
+    expect(elementPause).toHaveBeenCalledTimes(1);
+    expect(elementPlay).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
+    ).toBe("Preview");
   });
 });

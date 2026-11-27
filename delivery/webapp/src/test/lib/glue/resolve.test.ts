@@ -196,6 +196,7 @@ describe("resolveGlueJunctions", () => {
       id: "take-1",
       ordinal: 1,
       seconds: 3,
+      beats: 4,
       r2Key: "glues/1/take-1.wav",
       descriptorKey: descriptor().key,
       status: "ok",

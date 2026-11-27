@@ -15,7 +15,7 @@ from psycopg2 import Error as DatabaseError
 
 from sow_render_worker import db, glue_jobs as spine
 from sow_render_worker import glue_runpod as gpu
-from sow_render_worker.glue_excerpts import GlueAudioUnavailable
+from sow_render_worker.glue_excerpts import GlueAudioUnavailable, audio_unavailable_detail
 from sow_render_worker.glue_modal import ModalSampler
 from sow_render_worker.glue_provider import (
     GLUE_COPYRIGHT_REJECTED,
@@ -347,7 +347,7 @@ class Cascade:
             )
             if self.audio is None:
                 self.log("glue.provider.ineligible", provider="simdps", reason=reason)
-                raise spine.GlueJobError(JUNCTION_AUDIO_UNAVAILABLE, "none")
+                raise spine.GlueJobError(JUNCTION_AUDIO_UNAVAILABLE, "none", reason)
         return self.audio
 
     def _submit_gpu(self, backend):
@@ -612,11 +612,13 @@ def execute(conn, job, work_dir, context, assets, log, saved_route=None):
         log("glue.cascade.ownership_lost", phase=job.phase)
     except spine._StaleJunction as exc:
         spine._finish_stale(conn, job, log, reason=str(exc))
-    except GlueAudioUnavailable:
+    except GlueAudioUnavailable as exc:
         spine._handle_failure(
             conn,
             job,
-            spine.GlueJobError(JUNCTION_AUDIO_UNAVAILABLE, "none"),
+            spine.GlueJobError(
+                JUNCTION_AUDIO_UNAVAILABLE, "none", audio_unavailable_detail(exc)
+            ),
             contacted=job.provider_contacted,
             log=log,
         )

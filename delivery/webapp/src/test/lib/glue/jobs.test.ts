@@ -680,6 +680,108 @@ describe("status serialization", () => {
     expect(payload.latestByFromItemId["item-b"].id).toBe("job-b");
   });
 
+  it("logs one provider-attributed line per terminal job", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const row = makeRecord({
+      id: "job-cascade",
+      phase: "ready",
+      active: false,
+      providerContacted: true,
+      providerContextJson: {
+        provider: "cascade",
+        winner: { backend: "runpod", model: "acestep-v15-base" },
+      },
+      resultingTakeId: "take-1",
+      startedAt: new Date("2026-11-22T10:00:00Z"),
+      finishedAt: new Date("2026-11-22T10:01:00Z"),
+    });
+    const { deps } = buildDeps({ repository: createFakeRepository([row]) });
+
+    // A status fetch and an SSE snapshot both read the same row; the job is
+    // named once per instance so the stream does not flood the logs.
+    await getGlueJobStatus(row.id, 1, deps);
+    await getGlueJobStatus(row.id, 1, deps);
+
+    const lines = info.mock.calls.map(([line]) => JSON.parse(String(line)));
+    expect(lines).toEqual([
+      {
+        event: "glue.job.completed",
+        glueJobId: "job-cascade",
+        userId: 1,
+        songsetId: "songset-1",
+        fromItemId: "item-a",
+        toItemId: "item-b",
+        attemptId: "attempt-1",
+        phase: "ready",
+        takeId: "take-1",
+        provider: "simdps-runpod",
+        model: "acestep-v15-base",
+        durationMs: 60_000,
+        errorCode: null,
+        retryKind: null,
+      },
+    ]);
+    // The stored route includes signed material and must never be logged.
+    expect(String(info.mock.calls[0]?.[0])).not.toContain("provider_context");
+    info.mockRestore();
+  });
+
+  it("attributes a direct ElevenLabs job and a pre-contact failure", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const eleven = makeRecord({
+      id: "job-eleven",
+      phase: "ready",
+      active: false,
+      providerContextJson: { provider: "elevenlabs" },
+    });
+    const neverContacted = makeRecord({
+      id: "job-dispatch",
+      phase: "dispatch-failed",
+      active: false,
+      errorCode: "GLUE_DISPATCH_FAILED",
+    });
+    const { deps } = buildDeps({
+      repository: createFakeRepository([eleven, neverContacted]),
+    });
+
+    await getGlueJobStatus(eleven.id, 1, deps);
+    await getGlueJobStatus(neverContacted.id, 1, deps);
+
+    const lines = info.mock.calls.map(([line]) => JSON.parse(String(line)));
+    expect(lines[0]).toMatchObject({ provider: "elevenlabs", model: "music_v2_5" });
+    // A job that never started has no duration field at all.
+    expect(lines[1]).toMatchObject({ phase: "dispatch-failed", provider: null, model: null });
+    expect(lines[1]).not.toHaveProperty("durationMs");
+    info.mockRestore();
+  });
+
+  it("logs discovery only for jobs finished in the last ten minutes", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    buildActiveGlueJobsPayload(
+      [
+        makeRecord({
+          id: "job-two-hours-ago",
+          phase: "ready",
+          active: false,
+          finishedAt: new Date("2026-11-22T08:10:00Z"),
+        }),
+        makeRecord({
+          id: "job-a-minute-ago",
+          fromItemId: "item-b",
+          phase: "ready",
+          active: false,
+          finishedAt: new Date("2026-11-22T10:09:00Z"),
+        }),
+      ],
+      QUOTA,
+      new Date("2026-11-22T10:10:00Z")
+    );
+    expect(
+      info.mock.calls.map(([line]) => JSON.parse(String(line)).glueJobId)
+    ).toEqual(["job-a-minute-ago"]);
+    info.mockRestore();
+  });
+
   it("reads a single status and lists by Songset", async () => {
     const { deps } = buildDeps({ repository: createFakeRepository([makeRecord()]) });
     expect((await getGlueJobStatus("job-1", 1, deps)).id).toBe("job-1");

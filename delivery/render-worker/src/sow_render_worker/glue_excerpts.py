@@ -61,9 +61,32 @@ class GlueExcerptTooShort(GlueExcerptError):
 
 
 class GlueAudioUnavailable(GlueExcerptError):
-    """Recording download or decode failed; infrastructure, not a cache entry."""
+    """Recording download or decode failed; infrastructure, not a cache entry.
+
+    `cause` is a stable token the webapp turns into copy naming the input that
+    has to change, so a fail-closed junction is never an unexplained refusal.
+    """
 
     code = GLUE_AUDIO_UNAVAILABLE
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        side: str | None = None,
+        cause: str = "source-audio-unavailable",
+    ) -> None:
+        super().__init__(message, side=side)
+        self.cause = cause
+
+
+def audio_unavailable_detail(exc: GlueAudioUnavailable) -> str:
+    """`<cause>[ side=A|B]` - the token the webapp parses into actionable copy.
+
+    An unknown side is omitted rather than spelled `unknown`, because the
+    client only accepts `A` or `B` and drops the whole token otherwise.
+    """
+    return exc.cause if exc.side is None else f"{exc.cause} side={exc.side}"
 
 
 @dataclass(frozen=True)
@@ -172,7 +195,11 @@ def build_excerpt(
     work_path = Path(work_dir)
     work_path.mkdir(parents=True, exist_ok=True)
 
-    decoded = _decode_to_float32(Path(source_path), work_path, timeout=timeout)
+    try:
+        decoded = _decode_to_float32(Path(source_path), work_path, timeout=timeout)
+    except GlueAudioUnavailable as exc:
+        # The cause is decided at the ffmpeg call; this side owns the excerpt.
+        raise GlueAudioUnavailable(str(exc), side=side, cause=exc.cause) from exc
     try:
         with sf.SoundFile(str(decoded)) as source:
             windows = _plan_windows(
@@ -249,7 +276,9 @@ def _decode_to_float32(
         subprocess.run(command, check=True, capture_output=True, timeout=timeout)
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         decoded.unlink(missing_ok=True)
-        raise GlueAudioUnavailable(f"Failed to decode Recording {source.name}") from exc
+        raise GlueAudioUnavailable(
+            f"Failed to decode Recording {source.name}", cause="decode-failed"
+        ) from exc
     return decoded
 
 
