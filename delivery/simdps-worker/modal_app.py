@@ -5,20 +5,26 @@ import re
 
 import modal
 
-image_ref = os.environ["SIMDPS_IMAGE"]
-if not re.search(r"@sha256:[a-f0-9]{64}$", image_ref):
-    raise ValueError("SIMDPS_IMAGE must name an immutable image digest")
+# Modal re-imports this module in a container that already has the deployed image.
+image = None
+if modal.is_local():
+    image_ref = os.environ.get("SIMDPS_IMAGE", "")
+    if not re.fullmatch(r"[^@\s]+@sha256:[a-f0-9]{64}", image_ref):
+        raise ValueError(
+            "Set SIMDPS_IMAGE to an immutable image reference (<image>@sha256:<digest>)"
+        )
 
-registry_secret_name = os.environ.get("SIMDPS_MODAL_REGISTRY_SECRET")
-image = modal.Image.from_registry(
-    image_ref,
-    secret=modal.Secret.from_name(registry_secret_name) if registry_secret_name else None,
-    setup_dockerfile_commands=[
-        "ENTRYPOINT []",
-        "RUN uv pip install --python /opt/env/bin/python pip==25.3",
-        "ENV PYTHONPATH=/worker",
-    ],
-)
+    registry_secret_name = os.environ.get("SIMDPS_MODAL_REGISTRY_SECRET")
+    image = modal.Image.from_registry(
+        image_ref,
+        secret=modal.Secret.from_name(registry_secret_name) if registry_secret_name else None,
+        setup_dockerfile_commands=[
+            "ENTRYPOINT []",
+            "RUN uv pip install --python /opt/env/bin/python pip==25.3",
+            "ENV PYTHONPATH=/worker",
+        ],
+    )
+
 app = modal.App("sow-glue-simdps")
 
 
