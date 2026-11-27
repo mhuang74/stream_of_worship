@@ -169,6 +169,14 @@ function glueReasonKey(
 
 function glueQuoteErrorKey(code: string): TranslationKey {
   switch (code) {
+    case "GLUE_NO_SUCCESSOR":
+      return "glue.reason.noNext";
+    case "GLUE_TEMPO_UNAVAILABLE":
+      return "glue.reason.noTempo";
+    case "GLUE_ANALYSIS_UNAVAILABLE":
+      return "glue.reason.noAnalysis";
+    case "GLUE_ARRANGEMENT_INVALID":
+      return "glue.reason.invalidArrangement";
     case "GLUE_EXCERPT_TOO_SHORT":
       return "glue.reason.tooShort";
     case "GLUE_COPYRIGHT_REJECTED":
@@ -178,6 +186,9 @@ function glueQuoteErrorKey(code: string): TranslationKey {
     case "GLUE_NOT_CONFIGURED":
       return "glue.reason.unknown";
     default:
+      // `GLUE_NOT_ENABLED` stays generic on purpose: the rail no longer quotes
+      // an unsaved enable, so it now only means another tab disabled this
+      // junction.
       return "glue.error.quote";
   }
 }
@@ -1289,10 +1300,14 @@ export function ArrangementEditorSheet({
   );
 
   // The quote is computed from the saved item, so the request identity covers
-  // the Junction, the saved beat count, and the rail being open and enabled.
+  // the Junction, the saved beat count, the saved enable flag and the item
+  // timestamp. `glueEnabled` is the optimistic draft, so it alone cannot be the
+  // request identity: the quote reads the saved row. A quote is therefore never
+  // requested while the enable PATCH is in flight, and a quote answered for the
+  // pre-PATCH row is dropped once the saved row changes.
   const glueQuoteRequestKey =
-    isOpen && nextItem !== null && glueEnabled && songsetId
-      ? `${songsetId}:${item.id}:${nextItem.id}:${savedGlueBeats}`
+    isOpen && nextItem !== null && glueEnabled && !glueSaving && songsetId
+      ? `${songsetId}:${item.id}:${nextItem.id}:${savedGlueBeats}:${savedGlueEnabled ? 1 : 0}:${item.updatedAt ?? ""}`
       : null;
 
   // The quote endpoint returns the current quota and duration.
@@ -1333,6 +1348,10 @@ export function ArrangementEditorSheet({
             | null;
           if (cancelled) return;
           if (!response.ok) {
+            // The enable PATCH commits the row this quote reads; a read can
+            // still land on the previous `glue_enabled`. Retry instead of
+            // reporting a failure the save already fixed.
+            if (body?.code === "GLUE_NOT_ENABLED") continue;
             setGlueQuote(null);
             setGlueQuoteError({
               requestKey,
