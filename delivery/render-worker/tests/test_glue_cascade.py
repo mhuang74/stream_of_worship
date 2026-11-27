@@ -478,9 +478,9 @@ def test_wide_runpod_window_still_leaves_modal_preparation_time(delivery, monkey
 
 
 def test_preparation_never_consumes_a_later_fallback_window(delivery, monkeypatch, tmp_path):
-    # Preparation may run to its own deadline, so each stage must reserve the
-    # windows that still follow it: RunPod reserves Modal + ElevenLabs, Modal
-    # reserves ElevenLabs, and no window is truncated by the earlier one.
+    # Preparation may run to its own deadline, so every stage must reserve the
+    # preparation and provider windows that still follow it. Without that slack a
+    # preparation ending exactly at its epoch leaves the next stage zero time.
     monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "120")
     runner = cascade.Cascade(None, delivery.job, tmp_path, None, None, delivery.log)
     deadline = runner.route["deadline_epoch"]
@@ -503,10 +503,52 @@ def test_preparation_never_consumes_a_later_fallback_window(delivery, monkeypatc
         ("runpod", 120),
         ("modal", 120),
     ]
-    # RunPod reserves its own 120 s plus Modal's and ElevenLabs' windows; Modal
-    # reserves its own plus ElevenLabs', so the last fallback keeps 60 s.
-    assert windows[0][1] == deadline - 120 - 120 - 60
-    assert windows[1][1] == deadline - 120 - 60
+    prep, window, eleven = cascade.MIN_PREPARATION_SECONDS, 120, 60
+    # RunPod reserves its own window plus Modal's and ElevenLabs' window and
+    # preparation; Modal keeps only ElevenLabs behind it.
+    assert windows[0][1] == deadline - window - (eleven + prep) - (window + prep)
+    assert windows[1][1] == deadline - window - (eleven + prep)
+    # After Modal's stage ends, ElevenLabs still fits its preparation window and
+    # its full compose window inside the generation deadline.
+    modal_end = 1000 + windows[1][2]
+    for _, _, seconds in windows:
+        modal_end = max(modal_end, 1000 + seconds)
+    assert modal_end + prep + eleven <= deadline
+
+
+def test_elevenlabs_preparation_reserves_its_compose_window(delivery, monkeypatch, tmp_path):
+    # Excerpt preparation may not consume the compose window it precedes, or the
+    # compose would run past deadline_epoch into the finalization reserve.
+    runner = cascade.Cascade(None, delivery.job, tmp_path, None, None, delivery.log)
+    seen = []
+
+    def excerpts(*args, **kwargs):
+        seen.append(runner.preparation_epoch)
+        raise spine.GlueJobError(spine.GLUE_PROVIDER_UNKNOWN, "paid")
+
+    monkeypatch.setattr(runner, "_excerpts", excerpts)
+    with pytest.raises(spine.GlueJobError):
+        runner._elevenlabs(None)
+    assert seen == [runner.route["deadline_epoch"] - 60]
+
+
+def test_out_of_time_gpu_stage_still_tries_elevenlabs(delivery, monkeypatch):
+    # RunPod may already be paid when a later GPU stage runs out of budget; the
+    # worker must still try the final fallback instead of failing the job.
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
+    delivery.state.runpod_status = "FAILED"
+    stages = []
+
+    def stage(backend):
+        stages.append(backend)
+        if backend == "modal":
+            raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
+
+    monkeypatch.setattr(cascade.Cascade, "_gpu_stage", lambda self, backend: stage(backend))
+    assert delivery.deliver() == "elevenlabs"
+    assert stages == ["runpod", "modal"]
+    # The RunPod stage is stubbed out here, so only ElevenLabs actually submits.
+    assert delivery.submissions == [("elevenlabs", 1000)]
 
 
 def test_salvage_promotes_a_gpu_result_written_after_the_timeout(delivery, monkeypatch, tmp_path):
