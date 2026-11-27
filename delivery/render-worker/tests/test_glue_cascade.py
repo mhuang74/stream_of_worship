@@ -32,9 +32,7 @@ def delivery(monkeypatch, tmp_path):
     events = []
     montage_puts = 0
     state = SimpleNamespace(
-        eleven="success",
         backend_ready={},
-        modal_fails=False,
         modal_reject=False,
         remote_bad=False,
         runpod_status="IN_PROGRESS",
@@ -107,11 +105,11 @@ def delivery(monkeypatch, tmp_path):
             if state.hedge_storage_fail and montage_puts:
                 raise OSError("input storage unavailable")
             montage_puts += 1
+        if state.crash_at == kind:
+            raise Interrupted
         if Key in objects:
             raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
         objects[Key] = data, {}
-        if state.crash_at == kind:
-            raise Interrupted
 
     client = SimpleNamespace(
         put_object=put_object,
@@ -167,7 +165,7 @@ def delivery(monkeypatch, tmp_path):
 
     modal = SimpleNamespace(
         submit=modal_submit,
-        poll=lambda *args: ("FAILED" if state.modal_fails else None, {}),
+        poll=lambda *args: (None, {}),
         cancel=lambda *args: cancelled.append("modal"),
     )
 
@@ -175,15 +173,10 @@ def delivery(monkeypatch, tmp_path):
         def stage(*args, work_dir, **kwargs):
             callbacks["authorize"]("upload-a")
             submissions.append(("elevenlabs", now))
-            if state.eleven == "copyright":
-                raise spine.GlueJobError(cascade.GLUE_COPYRIGHT_REJECTED, "none")
             travel(5)
             callbacks["authorize"]("upload-b")
             travel(5)
             callbacks["authorize"]("compose")
-            if state.eleven == "timeout":
-                travel(50)
-                raise spine.GlueJobError(spine.GLUE_PROVIDER_UNKNOWN, "paid")
             path = work_dir / "raw.pcm"
             path.write_bytes(b"elevenlabs pcm")
             callbacks["accept"](path)
@@ -270,20 +263,25 @@ def delivery(monkeypatch, tmp_path):
     )
 
 
-def test_elevenlabs_success_contacts_no_gpu(delivery):
-    assert delivery.deliver() == "elevenlabs"
-    assert delivery.submissions == [("elevenlabs", 1000)]
-    attempt = delivery.saved.route["attempts"]["elevenlabs"]
-    assert attempt["deadline_epoch"] == 1060
-    assert attempt["operations"] == {"upload-a": 1000, "upload-b": 1005, "compose": 1010}
+def test_runpod_success_stops_before_modal_and_elevenlabs(delivery):
+    delivery.state.backend_ready = {"runpod": 3}
+    assert delivery.deliver() == "runpod"
+    assert delivery.submissions == [("runpod", 1000)]
+    route = delivery.saved.route
+    assert (route["version"], route["policy"]) == (3, "cascade-simdps")
+    assert route["provider"] == "cascade"
+    assert route["simdps_seconds"] == 120
+    assert "elevenlabs" not in route["attempts"]
 
 
-@pytest.mark.parametrize("failure,modal_submitted", [("timeout", 1060), ("copyright", 1000)])
-def test_elevenlabs_failure_falls_back_once(delivery, failure, modal_submitted):
-    delivery.state.eleven = failure
-    delivery.state.backend_ready = {"modal": 3}
-    assert delivery.deliver() == "modal"
-    assert delivery.submissions == [("elevenlabs", 1000), ("modal", modal_submitted)]
+def test_fresh_cascade_route_uses_simdps_policy(delivery):
+    delivery.state.backend_ready = {"runpod": 3}
+    assert delivery.deliver() == "runpod"
+    route = delivery.saved.route
+    assert (route["version"], route["policy"]) == (3, "cascade-simdps")
+    assert route["provider"] == "cascade"
+    assert (route["simdps_seconds"], route["elevenlabs_seconds"]) == (120, 60)
+    assert "modal_hedge_seconds" not in route
 
 
 def test_cached_rejection_with_incompatible_geometry_stays_precontact(delivery):
@@ -298,86 +296,69 @@ def test_cached_rejection_with_incompatible_geometry_stays_precontact(delivery):
     assert delivery.submissions == []
 
 
-def test_cached_rejection_and_immediate_modal_failure(delivery):
-    delivery.state.skip = delivery.state.modal_fails = True
+def test_recovery_promotes_a_stored_runpod_result(delivery):
+    delivery.state.crash_at = "submit"
     delivery.state.backend_ready = {"runpod": 3}
-    assert delivery.deliver() == "runpod"
-    assert delivery.submissions == [("modal", 1000), ("runpod", 1000)]
-
-
-@pytest.mark.parametrize(
-    ("modal", "runpod", "invalid", "winner"),
-    [
-        (15, 9, None, "modal"),
-        (18, 3, None, "runpod"),
-        (15, 3, None, "modal"),
-        (15, 3, "modal", "runpod"),
-    ],
-)
-def test_hedge_accepts_first_verified_audio(delivery, monkeypatch, modal, runpod, invalid, winner):
-    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", "12")
-    delivery.state.skip = True
-    delivery.state.backend_ready = {"modal": modal, "runpod": runpod}
-    delivery.state.invalid = invalid
-    assert delivery.deliver() == winner
-    assert delivery.submissions == [("modal", 1000), ("runpod", 1012)]
-    attempts = delivery.saved.route["attempts"]
-    assert attempts["runpod"]["deadline_epoch"] == 1372
-    assert attempts["modal"]["result_key"] != attempts["runpod"]["result_key"]
-    assert attempts["modal"]["montage_sha256"] == attempts["runpod"]["montage_sha256"]
-    assert delivery.cancelled == [next(name for name in ("modal", "runpod") if name != winner)]
-
-
-@pytest.mark.parametrize(
-    ("crash", "backend", "age"),
-    [
-        ("elevenlabs.pcm", "elevenlabs", 4680),
-        ("response.pcm", "elevenlabs", 4680),
-        ("submit", "modal", 4680),
-        ("intent", "runpod", 30),
-    ],
-)
-def test_interrupted_job_recovers_under_rollback(delivery, monkeypatch, crash, backend, age):
-    delivery.state.crash_at = crash
-    delivery.state.skip = backend != "elevenlabs"
-    delivery.state.backend_ready = {"modal": 3, "runpod": 3}
     with pytest.raises(Interrupted):
         delivery.deliver()
     delivery.state.crash_at = None
-    monkeypatch.setenv("SOW_GLUE_PROVIDER", "elevenlabs")
-    delivery.travel(age)
-    assert delivery.deliver(recover=True) == backend
-    assert len(delivery.submissions) == 1
+    delivery.travel(30)
+    assert delivery.deliver(recover=True) == "runpod"
+    assert delivery.submissions == [("runpod", 1000)]
+
+
+def test_recovery_without_a_stored_result_fails_paid(delivery):
+    delivery.state.crash_at = "submit"
+    with pytest.raises(Interrupted):
+        delivery.deliver()
+    delivery.state.crash_at = None
+    with pytest.raises(spine.GlueJobError) as caught:
+        delivery.deliver(recover=True)
+    assert (caught.value.code, caught.value.retry_kind) == (spine.GLUE_WORKER_FAILED, "paid")
+    assert "failure" not in delivery.saved.route["attempts"]["runpod"]
+    assert delivery.submissions == [("runpod", 1000)]
+
+
+def test_recovery_marks_an_ambiguous_elevenlabs_attempt(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
+    delivery.state.crash_at = "elevenlabs.pcm"
+    with pytest.raises(Interrupted):
+        delivery.deliver()
+    delivery.state.crash_at = None
+    with pytest.raises(spine.GlueJobError) as caught:
+        delivery.deliver(recover=True)
+    assert (caught.value.code, caught.value.retry_kind) == (spine.GLUE_WORKER_FAILED, "paid")
+    assert delivery.saved.route["attempts"]["elevenlabs"]["failure"] == "ambiguous"
+    assert [name for name, _ in delivery.submissions] == ["runpod", "modal", "elevenlabs"]
 
 
 def test_lost_claim_blocks_additional_submission(delivery):
-    delivery.state.eleven = "timeout"
-    delivery.state.deny = {"elevenlabs", "modal"}
+    delivery.state.deny = {"runpod"}
     with pytest.raises(spine._ClaimLost):
         delivery.deliver()
-    assert delivery.submissions == [("elevenlabs", 1000)]
-    assert delivery.saved.charged == 1
+    assert delivery.submissions == []
+    assert delivery.saved.charged == 0
 
 
 def test_crash_before_intent_can_prepare_again_without_charging_twice(delivery):
-    delivery.state.skip = True
     delivery.state.crash_at = "montage.flac"
-    delivery.state.backend_ready = {"modal": 3}
     with pytest.raises(Interrupted):
         delivery.deliver()
     assert delivery.saved.charged == 0
     assert delivery.submissions == []
     delivery.state.crash_at = None
-    assert delivery.deliver(recover=True) == "modal"
+    delivery.state.backend_ready = {"runpod": 3}
+    assert delivery.deliver(recover=True) == "runpod"
+    assert delivery.submissions == [("runpod", 1000)]
 
 
-def test_edit_at_the_snapshot_guard_blocks_fallback(delivery):
-    delivery.state.eleven = "timeout"
-    delivery.state.deny = {"elevenlabs", "modal"}
+def test_edit_at_the_snapshot_guard_blocks_fallback(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
+    delivery.state.deny = {"runpod", "modal"}
     delivery.state.edited = True
     with pytest.raises(spine._StaleJunction):
         delivery.deliver()
-    assert delivery.submissions == [("elevenlabs", 1000)]
+    assert delivery.submissions == [("runpod", 1000)]
 
 
 def test_duplicate_delivery_does_not_run_an_already_claimed_cascade(delivery, monkeypatch):
@@ -456,76 +437,47 @@ def test_execute_reraises_after_database_loss(delivery, monkeypatch, tmp_path):
         cascade.execute(None, delivery.job, tmp_path, None, None, delivery.log)
 
 
-@pytest.mark.parametrize(("elevenlabs", "hedge"), [("0", "180"), ("400", "400")])
-def test_invalid_generation_timing_is_not_configured(monkeypatch, elevenlabs, hedge):
+@pytest.mark.parametrize(("simdps", "elevenlabs"), [("0", "60"), ("120", "0"), ("400", "400")])
+def test_invalid_generation_timing_is_not_configured(monkeypatch, simdps, elevenlabs):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", simdps)
     monkeypatch.setenv("SOW_GLUE_ELEVENLABS_SECONDS", elevenlabs)
-    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", hedge)
     with pytest.raises(spine.GlueJobError) as caught:
         cascade.Timing.from_env()
     assert (caught.value.code, caught.value.retry_kind) == (spine.GLUE_NOT_CONFIGURED, "free")
 
 
-def test_recovery_rejects_corrupted_gpu_input(delivery):
-    delivery.state.skip = True
-    delivery.state.crash_at = "submit"
-    with pytest.raises(Interrupted):
-        delivery.deliver()
-    delivery.objects[delivery.saved.route["attempts"]["modal"]["montage_key"]] = (
-        b"corrupt montage",
-        {},
-    )
-    delivery.state.crash_at = None
-    with pytest.raises(RuntimeError, match="Stored SimDPS input is unavailable"):
-        delivery.deliver(recover=True)
-
-
-def test_recovery_without_elevenlabs_artifact_falls_forward(delivery):
-    delivery.state.crash_at = "intent"
-    delivery.state.backend_ready = {"modal": 3}
-    with pytest.raises(Interrupted):
-        delivery.deliver()
-    delivery.state.crash_at = None
-    assert delivery.deliver(recover=True) == "modal"
-    attempt = delivery.saved.route["attempts"]["elevenlabs"]
-    assert attempt["failure"] == "ambiguous"
-    # The interrupted upload is the only ElevenLabs contact; recovery never repeats it.
-    assert attempt["operations"] == {"upload-a": 1000}
-    assert delivery.submissions == [("modal", 1000)]
-
-
-def test_terminal_runpod_status_falls_back_to_modal(delivery, monkeypatch):
-    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", "12")
-    delivery.state.skip = True
+def test_terminal_runpod_status_advances_to_modal(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
     delivery.state.runpod_status = "FAILED"
-    delivery.state.backend_ready = {"modal": 30}
+    delivery.state.backend_ready = {"modal": 3}
     assert delivery.deliver() == "modal"
-    assert delivery.saved.route["attempts"]["runpod"]["failure"] == "remote-failed"
-    assert delivery.submissions == [("modal", 1000), ("runpod", 1012)]
+    attempts = delivery.saved.route["attempts"]
+    assert attempts["runpod"]["failure"] == "remote-failed"
+    assert attempts["modal"]["deadline_epoch"] == 1012
+    assert delivery.submissions == [("runpod", 1000), ("modal", 1000)]
     # A terminal attempt is finished; cancelling it would be a wasted paid call.
     assert delivery.cancelled == []
 
 
-def test_rejected_gpu_submission_advances_to_the_other_backend(delivery):
-    delivery.state.skip = True
+def test_rejected_modal_submission_falls_to_elevenlabs(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
     delivery.state.modal_reject = True
-    delivery.state.backend_ready = {"runpod": 3}
-    assert delivery.deliver() == "runpod"
+    assert delivery.deliver() == "elevenlabs"
     assert delivery.saved.route["attempts"]["modal"]["failure"] == "submission-rejected"
-    assert delivery.submissions == [("runpod", 1000)]
+    assert delivery.submissions == [("runpod", 1000), ("elevenlabs", 1012)]
 
 
 def test_missing_remote_id_still_promotes_stored_result(delivery):
-    delivery.state.skip = True
     delivery.state.remote_bad = True
-    delivery.state.backend_ready = {"modal": 3}
-    assert delivery.deliver() == "modal"
-    assert "remote_id" not in delivery.saved.route["attempts"]["modal"]
+    delivery.state.backend_ready = {"runpod": 3}
+    assert delivery.deliver() == "runpod"
+    assert "remote_id" not in delivery.saved.route["attempts"]["runpod"]
     ambiguous = [fields for event, fields in delivery.events if event == "glue.provider.ambiguous"]
-    assert ambiguous == [{"provider": "modal", "reason": "missing-remote-id"}]
+    assert ambiguous == [{"provider": "runpod", "reason": "missing-remote-id"}]
 
 
-def test_result_lookup_failure_defers_to_redelivery(delivery):
-    delivery.state.skip = True
+def test_result_lookup_failure_defers_to_redelivery(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
     delivery.state.lookup_fail = True
     with pytest.raises(RuntimeError, match="Verified audio lookup must be retried"):
         delivery.deliver()
@@ -534,18 +486,16 @@ def test_result_lookup_failure_defers_to_redelivery(delivery):
 
 
 def test_winner_promotion_conflict_defers_to_redelivery(delivery):
-    delivery.state.skip = True
-    delivery.state.backend_ready = {"modal": 3}
+    delivery.state.backend_ready = {"runpod": 3}
     delivery.objects[cascade.raw_response_key(delivery.job)] = (b"someone else's audio", {})
     with pytest.raises(RuntimeError, match="conflicts with the canonical raw response"):
         delivery.deliver()
 
 
-def test_hedge_input_storage_failure_keeps_modal(delivery, monkeypatch):
-    monkeypatch.setenv("SOW_GLUE_MODAL_HEDGE_SECONDS", "12")
-    delivery.state.skip = True
+def test_simdps_input_storage_failure_falls_to_elevenlabs(delivery, monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
     delivery.state.hedge_storage_fail = True
-    delivery.state.backend_ready = {"modal": 30}
-    assert delivery.deliver() == "modal"
-    assert delivery.saved.route["runpod_skip"] == "input-storage-unavailable"
-    assert delivery.submissions == [("modal", 1000)]
+    assert delivery.deliver() == "elevenlabs"
+    assert "modal" not in delivery.saved.route["attempts"]
+    assert delivery.submissions == [("runpod", 1000), ("elevenlabs", 1012)]
+    assert delivery.cancelled == ["runpod"]

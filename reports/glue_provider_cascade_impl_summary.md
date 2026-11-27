@@ -1,5 +1,7 @@
 # AI transition provider cascade
 
+**Superseded:** this summary describes the original `b01e0aa9` cascade. The current policy is `cascade-simdps` — RunPod, then Modal, then ElevenLabs, strictly sequential. See [ADR 0017](../docs/adr/0017-cascade-simdps-sequential-failover.md) and [the operator runbook](../docs/glue-operator-runbook.md#provider-cascade).
+
 The opt-in cascade routes a Glue Job through ElevenLabs, then SimDPS on Modal L4, with RunPod L4 available when Modal fails or runs past its hedge threshold. One confirmation authorizes one quota slot, one seed, and at most one new Glue Take. The implementation is in `b01e0aa9` on `docs/glue-sampler-runpod-v2`. ElevenLabs is the default for the compatibility rollout. [Architecture decision](../docs/adr/0016-glue-provider-cascade.md) · [Operator runbook](../docs/glue-operator-runbook.md#provider-cascade)
 
 ## Routing and recovery
