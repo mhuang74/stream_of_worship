@@ -42,6 +42,22 @@ def test_deploy_requires_an_immutable_image_reference(monkeypatch, image_ref):
     from_registry.assert_not_called()
 
 
+def test_startup_timeout_defaults_to_300_and_follows_the_deploy_environment(monkeypatch):
+    monkeypatch.setattr(modal, "is_local", lambda: False)
+    monkeypatch.delenv("SIMDPS_STARTUP_TIMEOUT_SECONDS", raising=False)
+    assert runpy.run_path(str(APP_FILE))["startup_timeout_seconds"] == 300
+
+    monkeypatch.setenv("SIMDPS_STARTUP_TIMEOUT_SECONDS", "120")
+    assert runpy.run_path(str(APP_FILE))["startup_timeout_seconds"] == 120
+
+
+@pytest.mark.parametrize("value", ["0", "3601", "abc"])
+def test_deploy_rejects_an_invalid_startup_timeout(monkeypatch, value):
+    monkeypatch.setenv("SIMDPS_STARTUP_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValueError, match="SIMDPS_STARTUP_TIMEOUT_SECONDS"):
+        runpy.run_path(str(APP_FILE))
+
+
 def test_deploy_uses_the_pinned_image_and_registry_secret(monkeypatch):
     monkeypatch.setattr(modal, "is_local", lambda: True)
     monkeypatch.setenv("SIMDPS_IMAGE", IMAGE_REF)

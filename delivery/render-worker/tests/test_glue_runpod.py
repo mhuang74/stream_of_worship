@@ -152,8 +152,8 @@ def test_lambda_presigning_matches_the_gpu_worker_put_contract(worker_handler):
             },
         ),
     )
-    request = provider.sign_request(r2, prefix, route, inputs)
-    assert request["policy"] == {"executionTimeout": 180000, "ttl": 330000}
+    request = provider.sign_request(r2, prefix, route, inputs, window_seconds=300)
+    assert request["policy"] == {"executionTimeout": 180000, "ttl": 540000}
     assert worker_handler.validate(request["input"], host, "private") == (
         264600,
         132300,
@@ -434,7 +434,7 @@ def _signed_route():
     r2, objects = _frozen_r2()
     prefix = "glue-simdps-tmp/7/job"
     route, request = provider.stage_inputs(r2, "endpoint", prefix, audio)
-    provider.sign_request(r2, prefix, route, request)
+    provider.sign_request(r2, prefix, route, request, window_seconds=300)
     seam = montage.copy()
     seam[a_frames : a_frames + fill_frames] = 4096
     assert rate == 44100
@@ -516,3 +516,14 @@ def test_prepare_audio_names_the_largest_supported_window(tmp_path, monkeypatch)
         None,
         time_left=lambda: 60,
     ) == (None, "unsupported-window supportedBeats=8")
+
+
+@pytest.mark.parametrize(
+    ("window", "ttl"),
+    [(0, 330000), (120, 360000), (180, 420000), (300, 540000)],
+)
+def test_ttl_covers_queue_time_without_raising_execution(window, ttl):
+    assert provider.policy_for_window(window) == {
+        "executionTimeout": 180000,
+        "ttl": ttl,
+    }

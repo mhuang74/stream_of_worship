@@ -5,6 +5,13 @@ import re
 
 import modal
 
+try:
+    startup_timeout_seconds = int(os.environ.get("SIMDPS_STARTUP_TIMEOUT_SECONDS", "300"))
+except ValueError:
+    startup_timeout_seconds = 0
+if not 1 <= startup_timeout_seconds <= 3600:
+    raise ValueError("SIMDPS_STARTUP_TIMEOUT_SECONDS must be between 1 and 3600")
+
 # Modal re-imports this module in a container that already has the deployed image.
 image = None
 if modal.is_local():
@@ -34,6 +41,7 @@ app = modal.App("sow-glue-simdps")
     min_containers=0,
     max_containers=2,
     timeout=180,
+    startup_timeout=startup_timeout_seconds,
     retries=0,
     secrets=[modal.Secret.from_name("sow-glue-simdps-r2")],
 )

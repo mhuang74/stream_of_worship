@@ -152,7 +152,10 @@ def delivery(monkeypatch, tmp_path):
     def runpod_call(method, operation, deadline, payload=None):
         if operation == "run":
             request = json.loads(payload)
-            assert request["policy"] == {"executionTimeout": 180000, "ttl": 330000}
+            assert request["policy"] == {
+                "executionTimeout": 180000,
+                "ttl": max(330, saved.route["simdps_seconds"] + 240) * 1000,
+            }
             return 200, {"id": submit("runpod", request["input"], deadline)}
         if operation.startswith("cancel/"):
             cancelled.append("runpod")
@@ -270,7 +273,7 @@ def test_runpod_success_stops_before_modal_and_elevenlabs(delivery):
     route = delivery.saved.route
     assert (route["version"], route["policy"]) == (3, "cascade-simdps")
     assert route["provider"] == "cascade"
-    assert route["simdps_seconds"] == 120
+    assert route["simdps_seconds"] == 300
     assert "elevenlabs" not in route["attempts"]
 
 
@@ -280,7 +283,7 @@ def test_fresh_cascade_route_uses_simdps_policy(delivery):
     route = delivery.saved.route
     assert (route["version"], route["policy"]) == (3, "cascade-simdps")
     assert route["provider"] == "cascade"
-    assert (route["simdps_seconds"], route["elevenlabs_seconds"]) == (120, 60)
+    assert (route["simdps_seconds"], route["elevenlabs_seconds"]) == (300, 60)
     assert "modal_hedge_seconds" not in route
 
 
@@ -444,6 +447,15 @@ def test_invalid_generation_timing_is_not_configured(monkeypatch, simdps, eleven
     with pytest.raises(spine.GlueJobError) as caught:
         cascade.Timing.from_env()
     assert (caught.value.code, caught.value.retry_kind) == (spine.GLUE_NOT_CONFIGURED, "free")
+
+
+def test_timing_ceiling_follows_the_900_second_lambda(monkeypatch):
+    monkeypatch.setenv("SOW_GLUE_ELEVENLABS_SECONDS", "60")
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "330")
+    assert cascade.Timing.from_env().total_seconds == 840
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "331")
+    with pytest.raises(spine.GlueJobError):
+        cascade.Timing.from_env()
 
 
 def test_terminal_runpod_status_advances_to_modal(delivery, monkeypatch):

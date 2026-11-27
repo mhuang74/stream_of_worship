@@ -127,7 +127,9 @@ def main():
                 },
             ),
         )
-        payload = json.dumps(sign_request(r2, prefix, route, request)).encode()
+        payload = json.dumps(
+            sign_request(r2, prefix, route, request, window_seconds=API_SECONDS)
+        ).encode()
     except Exception:
         fixture_error(21, "Check the input files and scratch R2 write access.")
 

@@ -405,10 +405,10 @@ reduces render throughput.
 |---|---|
 | Queue | `sow-glue-jobs` |
 | Dead-letter queue | `sow-glue-jobs-dlq` |
-| Visibility timeout | At least 4,680 s |
+| Visibility timeout | At least 5,400 s |
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker-standard` on standard Lambda |
-| Function timeout | 780 s |
+| Function timeout | 900 s |
 | Event source mapping | batch size 1, `ReportBatchItemFailures`, concurrency 2 |
 
 Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers routine operation and image-only rollback.

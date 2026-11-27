@@ -51,9 +51,9 @@ def test_standard_glue_limits_and_disabled_new_mapping() -> None:
 
     script = read_code(AWS_UP_GLUE)
     timeouts = {int(value) for value in re.findall(r"--timeout (\d+)", script)}
-    assert timeouts == {780}
+    assert timeouts == {900}
     assert 180_000 > 2 * glue_jobs.UPLOAD_STAGE_MS + glue_jobs.COMPOSE_DEADLINE_RESERVE_MS
-    assert "visibility=4680" in script
+    assert "visibility=5400" in script
     for flag in (
         "--memory-size 3008", "--ephemeral-storage Size=2048", "--batch-size 1",
         "--function-response-types ReportBatchItemFailures", "--no-enabled",
@@ -148,7 +148,7 @@ def test_deploy_workflow_reuses_render_image_on_standard_lambda() -> None:
     text = read(DEPLOY_WORKFLOW).split("  deploy-glue-worker:", 1)[1]
     for literal in (
         "needs.deploy-render-worker.outputs.image", "aws lambda update-function-code",
-        "--function-name sow-glue-worker-standard", ".Timeout == 780 and .CapacityProviderConfig == null",
+        "--function-name sow-glue-worker-standard", ".Timeout == 900 and .CapacityProviderConfig == null",
     ):
         assert literal in text
     assert "publish-version" not in text
@@ -183,12 +183,12 @@ def test_worker_readme_documents_all_glue_deployment_facts() -> None:
     required = [
         "sow-glue-jobs",
         "sow-glue-jobs-dlq",
-        "4,680",
+        "5,400",
         "maxReceiveCount",
         "batch size 1",
         "ReportBatchItemFailures",
         "sow-glue-worker",
-        "780",
+        "900",
         "standard Lambda",
         "concurrency 2",
         "SOW_ELEVENLABS_API_KEY",

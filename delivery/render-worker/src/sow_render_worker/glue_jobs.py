@@ -802,7 +802,11 @@ def _run_generate_mode(
                 current = _revalidate_before_contact(conn, job, log)
                 if current is None:
                     return
-                payload = json.dumps(glue_runpod.sign_request(r2, prefix, route, request)).encode()
+                payload = json.dumps(
+                    glue_runpod.sign_request(
+                        r2, prefix, route, request, window_seconds=glue_runpod.API_SECONDS
+                    )
+                ).encode()
                 if glue_runpod.remaining(lambda_context) < glue_runpod.API_SECONDS + glue_runpod.OUTCOME_SECONDS:
                     raise GlueJobError(GLUE_EXECUTION_DEADLINE, "free", "Insufficient time to contact Runpod")
                 deadline = time.monotonic() + glue_runpod.API_SECONDS

@@ -46,6 +46,9 @@ from sow_render_worker.simdps_audio import (
 
 API_SECONDS = 360
 OUTCOME_SECONDS = 60
+EXECUTION_TIMEOUT_SECONDS = 180
+TTL_SLACK_SECONDS = 60
+MIN_TTL_SECONDS = 330
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,128}")
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"}
 JSON_BYTES = 64 * 1024
@@ -361,7 +364,18 @@ def stage_inputs(r2, endpoint, prefix, audio, *, check_time=lambda: None):
     return route, request
 
 
-def sign_request(r2, prefix, route, request):
+def policy_for_window(window_seconds):
+    # executionTimeout counts only time spent running; ttl counts queue time
+    # too, so it must outlast the wait plus a full execution or a queued job
+    # is deleted while the worker is still polling it.
+    ttl = max(
+        MIN_TTL_SECONDS,
+        int(window_seconds) + EXECUTION_TIMEOUT_SECONDS + TTL_SLACK_SECONDS,
+    )
+    return {"executionTimeout": EXECUTION_TIMEOUT_SECONDS * 1000, "ttl": ttl * 1000}
+
+
+def sign_request(r2, prefix, route, request, *, window_seconds):
     for name in ("montage", "guide"):
         request[f"{name}_url"] = r2.client.generate_presigned_url(
             "get_object",
@@ -391,7 +405,7 @@ def sign_request(r2, prefix, route, request):
         ExpiresIn=600,
         HttpMethod="PUT",
     )
-    return {"input": request, "policy": {"executionTimeout": 180000, "ttl": 330000}}
+    return {"input": request, "policy": policy_for_window(window_seconds)}
 
 
 class RunpodAPI:
