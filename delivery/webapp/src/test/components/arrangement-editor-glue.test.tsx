@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { Mock } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithLocale as render } from "@/test/render";
 import { ArrangementEditorSheet } from "@/components/songset/ArrangementEditorSheet";
@@ -144,12 +145,15 @@ const QUOTE = {
   quotaResetAt: "2026-11-23T09:15:00.000Z",
 };
 
-function renderSheet(args: {
-  items?: SongListItem[];
-  onUpdateGlue?: (itemId: string, patch: Record<string, unknown>) => Promise<void>;
-}) {
-  const items = args.items ?? [makeItem(), successor()];
-  return render(
+// A stable identity keeps a re-render comparable to the previous one instead of
+// looking like a different parent callback.
+const NOOP_UPDATE_GLUE = async () => {};
+
+function sheetElement(
+  items: SongListItem[],
+  onUpdateGlue?: (itemId: string, patch: Record<string, unknown>) => Promise<void>
+) {
+  return (
     <ArrangementEditorSheet
       isOpen
       onOpenChange={vi.fn()}
@@ -157,9 +161,24 @@ function renderSheet(args: {
       items={items}
       onSave={vi.fn().mockResolvedValue(undefined)}
       songsetId="songset-1"
-      onUpdateGlue={args.onUpdateGlue ?? vi.fn().mockResolvedValue(undefined)}
+      onUpdateGlue={onUpdateGlue ?? NOOP_UPDATE_GLUE}
     />
   );
+}
+
+function renderSheet(args: {
+  items?: SongListItem[];
+  onUpdateGlue?: (itemId: string, patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const items = args.items ?? [makeItem(), successor()];
+  return render(sheetElement(items, args.onUpdateGlue));
+}
+
+/** Quote requests only: the rail also polls `glue-jobs`, which is not a quote. */
+function quoteCallCount(): number {
+  return (fetch as unknown as Mock).mock.calls.filter(([url]) =>
+    String(url).includes("glue-quote")
+  ).length;
 }
 
 describe("ArrangementEditorSheet AI transition rail", () => {
@@ -278,6 +297,75 @@ describe("ArrangementEditorSheet AI transition rail", () => {
       await screen.findByText(/Could not load the AI transition details/, {}, { timeout: 5000 })
     ).toBeTruthy();
     expect(screen.queryByTestId("arrangement-glue-quote")).toBeNull();
+  });
+
+  it("does not request a quote until the enabling PATCH lands", async () => {
+    const patch = Promise.withResolvers<void>();
+    const onUpdateGlue = vi.fn(() => patch.promise);
+    renderSheet({ onUpdateGlue });
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    await waitFor(() => expect(onUpdateGlue).toHaveBeenCalled());
+    expect(quoteCallCount()).toBe(0);
+    patch.resolve();
+    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+  });
+
+  it("retries a quote refused because the enable was not visible yet", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: unknown) => {
+        if (!String(url).includes("glue-quote")) {
+          return { ok: true, json: async () => [] };
+        }
+        calls += 1;
+        return calls === 1
+          ? { ok: false, json: async () => ({ code: "GLUE_NOT_ENABLED" }) }
+          : { ok: true, json: async () => QUOTE };
+      })
+    );
+    renderSheet({});
+    fireEvent.click(screen.getByTestId("arrangement-glue-toggle"));
+    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+    expect(calls).toBe(2);
+    expect(screen.queryByText(/Could not load the AI transition details/)).toBeNull();
+  });
+
+  it("re-quotes after the saved item changes and drops the old failure", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: unknown) => {
+        if (!String(url).includes("glue-quote")) {
+          return { ok: true, json: async () => [] };
+        }
+        calls += 1;
+        return calls === 1
+          ? { ok: false, json: async () => ({ code: "GLUE_ARRANGEMENT_INVALID" }) }
+          : { ok: true, json: async () => QUOTE };
+      })
+    );
+    const { rerender } = renderSheet({
+      items: [makeItem({ glueEnabled: true, glue: junction() }), successor()],
+    });
+    expect(
+      await screen.findByText("Fix the arrangement before creating an AI transition.")
+    ).toBeTruthy();
+    rerender(
+      sheetElement([
+        makeItem({
+          glueEnabled: true,
+          glue: junction(),
+          updatedAt: "2026-11-22T11:00:00.000Z",
+        }),
+        successor(),
+      ])
+    );
+    expect(await screen.findByTestId("arrangement-glue-quote")).toBeTruthy();
+    expect(
+      screen.queryByText("Fix the arrangement before creating an AI transition.")
+    ).toBeNull();
+    expect(calls).toBe(2);
   });
 
   it("shows the selected AI transition and its plain-language check warning", async () => {
