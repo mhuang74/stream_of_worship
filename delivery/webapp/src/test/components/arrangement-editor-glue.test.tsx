@@ -494,17 +494,26 @@ describe("ArrangementEditorSheet AI transition rail", () => {
   });
 
   it("pauses the preview transport before auditioning a stale take", async () => {
-    const play = vi.fn().mockResolvedValue(undefined);
-    const pauseElement = vi.fn();
+    const elementPlay = vi.fn();
+    const elementPause = vi.fn();
     vi.stubGlobal(
       "Audio",
       class {
+        // A real element flips `paused`, which is what the toggle reads to
+        // decide between starting and stopping the audition.
         paused = true;
         src = "";
         onended: (() => void) | null = null;
         onerror: (() => void) | null = null;
-        play = play;
-        pause = pauseElement;
+        play = vi.fn(function (this: { paused: boolean }) {
+          this.paused = false;
+          elementPlay();
+          return Promise.resolve();
+        });
+        pause = vi.fn(function (this: { paused: boolean }) {
+          this.paused = true;
+          elementPause();
+        });
       }
     );
     renderSheet({
@@ -535,17 +544,19 @@ describe("ArrangementEditorSheet AI transition rail", () => {
     });
 
     fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
-    // The two transports never sound together, in either direction.
+    // The two transports never sound together: the preview is paused first.
     expect(audioMocks.pause).toHaveBeenCalled();
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(elementPlay).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
+    ).toBe("Pause preview");
 
-    // Tapping again silences the element.
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
-      ).toBeTruthy()
-    );
+    // Tapping while it sounds stops the element instead of restarting it.
     fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
-    expect(pauseElement).toHaveBeenCalled();
+    expect(elementPause).toHaveBeenCalledTimes(1);
+    expect(elementPlay).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
+    ).toBe("Preview");
   });
 });

@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_cascade.py": {
-    "mtime": 1795779716.211296,
-    "seen": 1795782106.535028,
+    "mtime": 1795782518.4857862,
+    "seen": 1795782761.2288525,
     "ast_hash": "a2bbb63b03a9e73726b972281dd2e0c9",
     "semantic_hash": ""
   },
@@ -708,14 +708,14 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_excerpts.py": {
-    "mtime": 1795779714.4752915,
-    "seen": 1795782106.5350401,
+    "mtime": 1795782518.4867861,
+    "seen": 1795782761.2291572,
     "ast_hash": "8cdbc322cbb2724fa0b66ff3a483df77",
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_jobs.py": {
-    "mtime": 1795779729.9173324,
-    "seen": 1795782106.535044,
+    "mtime": 1795782518.4877863,
+    "seen": 1795782761.2291622,
     "ast_hash": "b58d296fb4f1602a5c3b0856d962da93",
     "semantic_hash": ""
   },
@@ -732,8 +732,8 @@
     "semantic_hash": ""
   },
   "delivery/render-worker/src/sow_render_worker/glue_runpod.py": {
-    "mtime": 1795779743.025366,
-    "seen": 1795782106.5350564,
+    "mtime": 1795782518.4887862,
+    "seen": 1795782761.2294703,
     "ast_hash": "091a09be151465909060be937d9363b0",
     "semantic_hash": ""
   },
@@ -1068,9 +1068,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/api/glue-jobs/[id]/events/route.ts": {
-    "mtime": 1795769856.911794,
-    "seen": 1795782106.5352848,
-    "ast_hash": "2880d2450f7c049b275ccd169c7383b0",
+    "mtime": 1795782514.6657891,
+    "seen": 1795782761.2393343,
+    "ast_hash": "715d8cd4a307ac8ef5c0a9f0a95f662a",
     "semantic_hash": ""
   },
   "delivery/webapp/src/app/api/glue-jobs/[id]/redispatch/route.ts": {
@@ -1530,8 +1530,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/audio/SongsetPlayerBar.tsx": {
-    "mtime": 1795779661.0041375,
-    "seen": 1795782106.5356283,
+    "mtime": 1795782518.4927862,
+    "seen": 1795782761.2560654,
     "ast_hash": "3ebaaacf2fd850d12da2962725b1882f",
     "semantic_hash": ""
   },
@@ -1638,8 +1638,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/render/RenderForm.tsx": {
-    "mtime": 1795779629.6760378,
-    "seen": 1795782106.5356991,
+    "mtime": 1795782518.493786,
+    "seen": 1795782761.2589698,
     "ast_hash": "91be716b39a2359ba6c77f5a3b0cfcc3",
     "semantic_hash": ""
   },
@@ -1698,8 +1698,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/components/songset/ArrangementEditorSheet.tsx": {
-    "mtime": 1795781312.5089314,
-    "seen": 1795782106.5357354,
+    "mtime": 1795782518.4977863,
+    "seen": 1795782761.2604582,
     "ast_hash": "2ea3f5a536c35d5d8410b6e378ec1e54",
     "semantic_hash": ""
   },
@@ -2100,8 +2100,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/hooks/useSongsetAudio.ts": {
-    "mtime": 1795779450.4743087,
-    "seen": 1795782106.5360286,
+    "mtime": 1795782518.4987862,
+    "seen": 1795782761.271322,
     "ast_hash": "3a2bfea294580090c0c79730b23bb3d1",
     "semantic_hash": ""
   },
@@ -2154,8 +2154,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/audio/songset-audio.ts": {
-    "mtime": 1795779443.663275,
-    "seen": 1795782106.536062,
+    "mtime": 1795782518.4997861,
+    "seen": 1795782761.2733893,
     "ast_hash": "fd4509a1368d0292208b9f3abf5d9018",
     "semantic_hash": ""
   },
@@ -2244,8 +2244,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/db/songsets.ts": {
-    "mtime": 1795779622.9130154,
-    "seen": 1795782106.5361218,
+    "mtime": 1795782518.503786,
+    "seen": 1795782761.2757285,
     "ast_hash": "23accd7e471a55caab52b3728faa65f0",
     "semantic_hash": ""
   },
@@ -2316,8 +2316,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/glue/errors.ts": {
-    "mtime": 1795779853.0586092,
-    "seen": 1795782106.5361724,
+    "mtime": 1795782518.5047863,
+    "seen": 1795782761.2773998,
     "ast_hash": "63483d657e18531c14828c1e5e67451f",
     "semantic_hash": ""
   },
@@ -2328,8 +2328,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/glue/jobs.ts": {
-    "mtime": 1795780080.5859349,
-    "seen": 1795782106.5361807,
+    "mtime": 1795782518.506786,
+    "seen": 1795782761.277603,
     "ast_hash": "3303f91cf7f5e63d40b4d7a5ce3c720e",
     "semantic_hash": ""
   },
@@ -2352,8 +2352,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/glue/resolve.ts": {
-    "mtime": 1795779196.535185,
-    "seen": 1795782106.5361967,
+    "mtime": 1795782518.5077863,
+    "seen": 1795782761.278086,
     "ast_hash": "da1dea233c41242ef4cbe36d66a07453",
     "semantic_hash": ""
   },
@@ -2412,8 +2412,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/glue.ts": {
-    "mtime": 1795779369.4488716,
-    "seen": 1795782106.5362525,
+    "mtime": 1795782518.5097861,
+    "seen": 1795782761.279585,
     "ast_hash": "d27eb4a372991238cbe9f1a2044929ec",
     "semantic_hash": ""
   },
@@ -2436,8 +2436,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/render.ts": {
-    "mtime": 1795779373.3798945,
-    "seen": 1795782106.5362685,
+    "mtime": 1795782518.5107863,
+    "seen": 1795782761.2800941,
     "ast_hash": "3a998e41bcfd6843616b1facb39cd860",
     "semantic_hash": ""
   },
@@ -2454,8 +2454,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/lib/i18n/messages/songsets.ts": {
-    "mtime": 1795779375.5609074,
-    "seen": 1795782106.5362825,
+    "mtime": 1795782518.5127861,
+    "seen": 1795782761.2804713,
     "ast_hash": "ee4c331ab9451014c94a8a23c98bd0dd",
     "semantic_hash": ""
   },
@@ -2796,9 +2796,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/api/glue-jobs.events.route.test.ts": {
-    "mtime": 1795769856.952794,
-    "seen": 1795782106.5365443,
-    "ast_hash": "b0bb143a22f45c810514ee8b8a3f059b",
+    "mtime": 1795782514.7037892,
+    "seen": 1795782761.2921827,
+    "ast_hash": "d9a7f8d4c87c238c308b4fbf2c6f5e57",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/api/glue-jobs.recovery.route.test.ts": {
@@ -3138,14 +3138,14 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/arrangement-editor-glue-jobs.test.tsx": {
-    "mtime": 1795780040.1458914,
-    "seen": 1795782106.5388305,
+    "mtime": 1795782518.5127861,
+    "seen": 1795782761.3018436,
     "ast_hash": "6c4bfd5851f07693537033a6c4646ee5",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/arrangement-editor-glue.test.tsx": {
-    "mtime": 1795780291.6000872,
-    "seen": 1795782106.538834,
+    "mtime": 1795782518.5127861,
+    "seen": 1795782761.3018494,
     "ast_hash": "aa27b61858bad984022c6c4e0f3101c7",
     "semantic_hash": ""
   },
@@ -3192,8 +3192,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/components/audio/SongsetPlayerBar.test.tsx": {
-    "mtime": 1795780324.4601014,
-    "seen": 1795782106.5388675,
+    "mtime": 1795782518.513786,
+    "seen": 1795782761.3031805,
     "ast_hash": "7998637c8fa49524646bf445cb6791d6",
     "semantic_hash": ""
   },
@@ -3516,9 +3516,9 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/hooks/useGlueJob.test.ts": {
-    "mtime": 1795769857.062794,
-    "seen": 1795782106.5391142,
-    "ast_hash": "a426a0cb7c315e233c79d9356f4af8bb",
+    "mtime": 1795782514.706789,
+    "seen": 1795782761.3147764,
+    "ast_hash": "1cc004ea8681394babb1cd4ae66a372b",
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/hooks/useKeyboardShortcuts.test.ts": {
@@ -3606,8 +3606,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/journey/glue-tc-journey.test.ts": {
-    "mtime": 1795781816.840376,
-    "seen": 1795782106.5391803,
+    "mtime": 1795782518.5157862,
+    "seen": 1795782761.317676,
     "ast_hash": "280b44f4166ffd74c6ea19ca1edcf68d",
     "semantic_hash": ""
   },
@@ -3660,8 +3660,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/audio/songset-audio.test.ts": {
-    "mtime": 1795779461.0933607,
-    "seen": 1795782106.539218,
+    "mtime": 1795782518.5177863,
+    "seen": 1795782761.3191254,
     "ast_hash": "78e6873b20b4794963e2fe9d33fe2b72",
     "semantic_hash": ""
   },
@@ -3732,8 +3732,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/db/songsets.resolved-glue.test.ts": {
-    "mtime": 1795779309.8084972,
-    "seen": 1795782106.5392692,
+    "mtime": 1795782518.5177863,
+    "seen": 1795782761.3213005,
     "ast_hash": "0522638532cf18dc46a0457a6f6c7ef9",
     "semantic_hash": ""
   },
@@ -3780,8 +3780,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/glue/jobs.test.ts": {
-    "mtime": 1795780098.868953,
-    "seen": 1795782106.539305,
+    "mtime": 1795782518.5197861,
+    "seen": 1795782761.3221736,
     "ast_hash": "bc6d00f4a6a27759028af196e12b6b67",
     "semantic_hash": ""
   },
@@ -3798,8 +3798,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/glue/resolve.test.ts": {
-    "mtime": 1795780141.2789907,
-    "seen": 1795782106.5393186,
+    "mtime": 1795782518.5207863,
+    "seen": 1795782761.3223832,
     "ast_hash": "fb012885880eb1fff7d8201a32cf902d",
     "semantic_hash": ""
   },
@@ -3822,8 +3822,8 @@
     "semantic_hash": ""
   },
   "delivery/webapp/src/test/lib/i18n/glue.test.ts": {
-    "mtime": 1795780236.479058,
-    "seen": 1795782106.5393353,
+    "mtime": 1795782518.5217862,
+    "seen": 1795782761.322763,
     "ast_hash": "bf5e2835785e1d7614d81145a69e6739",
     "semantic_hash": ""
   },
@@ -6537,6 +6537,54 @@
     "mtime": 1795769856.915794,
     "seen": 1795782106.5451365,
     "ast_hash": "80eecebbb41d09455891fd7bd38c8acd",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/audio/glue-preview.ts": {
+    "mtime": 1795782518.4987862,
+    "seen": 1795782761.2733827,
+    "ast_hash": "3663b9cc2e9d114af897968e0e964ae9",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/glue/failure-cause.ts": {
+    "mtime": 1795782518.5047863,
+    "seen": 1795782761.2775972,
+    "ast_hash": "9e7f3a4e6ddf55a9b7c142c0d9ed96c8",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/glue/observability.ts": {
+    "mtime": 1795782518.5077863,
+    "seen": 1795782761.2777672,
+    "ast_hash": "45d2504b8214fe99cbb98be134dde74a",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/glue/stale-copy.ts": {
+    "mtime": 1795782518.5077863,
+    "seen": 1795782761.2780907,
+    "ast_hash": "edf36cee7bee7ad6957fbdd998f2bdee",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/lib/glue/stale.ts": {
+    "mtime": 1795782518.5087862,
+    "seen": 1795782761.2780945,
+    "ast_hash": "702035f8c48d1727db641188ba4c3dce",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/lib/audio/glue-preview.test.ts": {
+    "mtime": 1795782518.5157862,
+    "seen": 1795782761.3191192,
+    "ast_hash": "da32d935bc591a21897edf8089e7ef24",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/lib/glue/failure-cause.test.ts": {
+    "mtime": 1795782518.5187862,
+    "seen": 1795782761.3221695,
+    "ast_hash": "fc92be20ce2947172e84527ef4ffd1a1",
+    "semantic_hash": ""
+  },
+  "delivery/webapp/src/test/lib/glue/stale.test.ts": {
+    "mtime": 1795782518.5217862,
+    "seen": 1795782761.322387,
+    "ast_hash": "ac823b20a34b14bc7c37ccd95cd556cb",
     "semantic_hash": ""
   }
 }

@@ -451,20 +451,22 @@ export function useSongsetAudio(
       // session here so the clip is ready before the transport starts, exactly
       // as a later preview finds it. Validation failures stay `play()`'s job.
       if (validationError !== null) return;
-      let session = sessionRef.current;
-      if (session !== null && session.getError()) {
-        teardown();
-        session = null;
+      const existing = sessionRef.current;
+      // A session that failed is `play()`'s to replace: tearing it down here
+      // would leave `stoppedRef` set and silence the fresh session until the
+      // transport actually starts.
+      if (existing !== null) {
+        if (existing.getError()) return;
+        await existing.prepareAt(seconds);
+        return;
       }
-      if (session === null) {
-        session = createSongsetAudioSession(effectiveItems, {
-          onGlueFailure: (failure) => handleGlueFailureRef.current(failure),
-        });
-        attachSession(session, itemsKey);
-      }
+      const session = createSongsetAudioSession(effectiveItems, {
+        onGlueFailure: (failure) => handleGlueFailureRef.current(failure),
+      });
+      attachSession(session, itemsKey);
       await session.prepareAt(seconds);
     },
-    [active, attachSession, effectiveItems, itemsKey, teardown, validationError],
+    [active, attachSession, effectiveItems, itemsKey, validationError],
   );
 
   const retry = useCallback(async () => {

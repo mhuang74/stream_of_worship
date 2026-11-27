@@ -23,6 +23,7 @@ vi.mock("@/hooks/useSongsetAudio", () => ({
     stop: vi.fn(),
     seek: vi.fn(),
     startAtSeconds: vi.fn().mockResolvedValue(undefined),
+    prepareAt: vi.fn().mockResolvedValue(undefined),
     glueFailures: [],
     retryGlueAudio: vi.fn().mockResolvedValue(true),
   }),
