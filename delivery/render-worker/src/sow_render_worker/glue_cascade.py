@@ -52,8 +52,7 @@ class Timing:
             )
             if (
                 min(timing.simdps_seconds, timing.elevenlabs_seconds) < 1
-                or timing.total_seconds + MIN_PREPARATION_SECONDS + gpu.OUTCOME_SECONDS
-                > LAMBDA_SECONDS
+                or timing.total_seconds + gpu.OUTCOME_SECONDS > LAMBDA_SECONDS
             ):
                 raise ValueError
         except ValueError:
@@ -64,7 +63,13 @@ class Timing:
 
     @property
     def total_seconds(self):
-        return 2 * self.simdps_seconds + self.elevenlabs_seconds
+        # Every stage — RunPod, Modal and ElevenLabs — needs its own preparation
+        # window in front of its provider window.
+        return (
+            2 * self.simdps_seconds
+            + self.elevenlabs_seconds
+            + 3 * MIN_PREPARATION_SECONDS
+        )
 
 
 class Cascade:
@@ -80,7 +85,7 @@ class Cascade:
         if saved_route is None:
             timing = Timing.from_env()
             end = self.invocation_deadline - gpu.OUTCOME_SECONDS
-            if end - _monotonic() <= timing.total_seconds + MIN_PREPARATION_SECONDS:
+            if end - _monotonic() <= timing.total_seconds:
                 raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
             endpoint, self.r2 = gpu.check_config()
             self.route = {
@@ -226,7 +231,10 @@ class Cascade:
 
     def _elevenlabs(self, inputs):
         backend = "elevenlabs"
-        self.preparation_epoch = self.route["deadline_epoch"]
+        # Excerpt preparation may not consume the compose window itself.
+        self.preparation_epoch = (
+            self.route["deadline_epoch"] - self.route["elevenlabs_seconds"]
+        )
         excerpts = self._excerpts(inputs)
         if any(excerpt.rejection_code for excerpt in excerpts):
             self.route["elevenlabs_skip"] = GLUE_COPYRIGHT_REJECTED
@@ -469,12 +477,12 @@ class Cascade:
     def _gpu_stage(self, backend):
         now = _time()
         window = self.route.get("simdps_seconds", 0)
-        # Windows that still follow this stage: ElevenLabs always, plus Modal's
-        # when RunPod runs. Reserving the current window too keeps preparation
-        # from eating the budget of a later fallback.
-        later = self.route.get("elevenlabs_seconds", 0)
+        # Every stage still ahead needs its preparation window plus its provider
+        # window; ElevenLabs is always last. Reserving the current window too
+        # keeps preparation from eating the budget of a later fallback.
+        later = self.route.get("elevenlabs_seconds", 0) + MIN_PREPARATION_SECONDS
         if backend != GPU_ORDER[-1]:
-            later += window
+            later += window + MIN_PREPARATION_SECONDS
         self.preparation_epoch = self.route["deadline_epoch"] - later - window
         limit = min(now + window, self.route["deadline_epoch"] - later)
         if limit <= now:
@@ -517,9 +525,17 @@ class Cascade:
         self._cancel(backend)
 
     def _simdps_pipeline(self):
-        self._gpu_stage("runpod")
-        if "winner" not in self.route and "simdps_skip" not in self.route:
-            self._gpu_stage("modal")
+        for backend in GPU_ORDER:
+            if "winner" in self.route or "simdps_skip" in self.route:
+                break
+            try:
+                self._gpu_stage(backend)
+            except spine.GlueJobError as exc:
+                # Out of time for this stage: keep the later fallbacks instead of
+                # failing a job that may already have paid for an earlier one.
+                if exc.code != spine.GLUE_EXECUTION_DEADLINE or backend in self.attempts:
+                    raise
+                self.log("glue.provider.fallback", provider=backend, reason=exc.code)
         if "winner" not in self.route:
             self._elevenlabs(self._inputs())
 
