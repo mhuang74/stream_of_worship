@@ -1465,42 +1465,6 @@ export function ArrangementEditorSheet({
     setGlueStaleTakePlaying(false);
   }, []);
 
-  /** Listen to the take the current settings no longer match (one-shot). */
-  const toggleStaleTakeAudio = useCallback(() => {
-    const take = displayGlue?.staleTake ?? null;
-    if (take === null) return;
-    const playing = glueStaleAudioRef.current;
-    if (playing !== null && !playing.paused) {
-      stopStaleTakeAudio();
-      return;
-    }
-    stopStaleTakeAudio();
-    const audio = new Audio(glueAudioUrl(take.id));
-    glueStaleAudioRef.current = audio;
-    const finish = () => {
-      if (glueStaleAudioRef.current === audio) stopStaleTakeAudio();
-    };
-    audio.onended = finish;
-    audio.onerror = () => {
-      finish();
-      setPreviewError(
-        t("glue.audioFallback")
-          .replace("{from}", glueFromTitle)
-          .replace("{to}", nextSongTitle)
-      );
-    };
-    setGlueStaleTakePlaying(true);
-    void audio.play().catch(() => {
-      finish();
-    });
-  }, [
-    displayGlue?.staleTake,
-    glueFromTitle,
-    nextSongTitle,
-    stopStaleTakeAudio,
-    t,
-  ]);
-
   // A stale audition never outlives its item: the sheet remounts per item, and
   // a change of item must not leave the previous junction sounding.
   useEffect(() => stopStaleTakeAudio, [item.id, stopStaleTakeAudio]);
@@ -1972,6 +1936,60 @@ export function ArrangementEditorSheet({
   ]);
 
   const position = preview.timelinePositionSeconds;
+
+  /** Listen to the take the current settings no longer match (one-shot). */
+  const toggleStaleTakeAudio = useCallback(() => {
+    const take = displayGlue?.staleTake ?? null;
+    if (take === null) return;
+    const playing = glueStaleAudioRef.current;
+    if (playing !== null && !playing.paused) {
+      stopStaleTakeAudio();
+      return;
+    }
+    stopStaleTakeAudio();
+    // One transport at a time: the stale take never doubles the preview.
+    preview.pause();
+    const audio = new Audio(glueAudioUrl(take.id));
+    glueStaleAudioRef.current = audio;
+    const reportFallback = () => {
+      setPreviewError(
+        t("glue.audioFallback")
+          .replace("{from}", glueFromTitle)
+          .replace("{to}", nextSongTitle)
+      );
+    };
+    const finish = () => {
+      if (glueStaleAudioRef.current === audio) stopStaleTakeAudio();
+    };
+    audio.onended = finish;
+    audio.onerror = () => {
+      finish();
+      reportFallback();
+    };
+    setGlueStaleTakePlaying(true);
+    void audio.play().catch(() => {
+      // Autoplay-blocked is the same dead end as a failed load: the take cannot
+      // sound, so say so instead of showing a pause button over silence.
+      finish();
+      reportFallback();
+    });
+  }, [
+    displayGlue?.staleTake,
+    glueFromTitle,
+    nextSongTitle,
+    preview,
+    stopStaleTakeAudio,
+    t,
+  ]);
+
+  // The arrangement transport wins: starting it, or stopping it, ends the
+  // stale take, so the Stop button silences both.
+  useEffect(() => {
+    if (preview.status !== "playing" && preview.status !== "idle") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- silencing the one-shot element is this effect's external job; the flag mirrors it
+    stopStaleTakeAudio();
+  }, [preview.status, stopStaleTakeAudio]);
+
   // The strip always shows the whole arrangement window, never the shorter
   // review or audition window that currently governs playback.
   const windowDurationSeconds = arrangementWindow

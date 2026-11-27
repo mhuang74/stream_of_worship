@@ -443,11 +443,29 @@ export function useSongsetAudio(
     [seek, play],
   );
 
-  const prepareAt = useCallback(async (seconds: number) => {
-    const session = sessionRef.current;
-    if (!session) return;
-    await session.prepareAt(seconds);
-  }, []);
+  const prepareAt = useCallback(
+    async (seconds: number) => {
+      if (!active) return;
+      // The first preview after opening the sheet has no session yet, and a
+      // preview started without one only decodes the outgoing item. Build the
+      // session here so the clip is ready before the transport starts, exactly
+      // as a later preview finds it. Validation failures stay `play()`'s job.
+      if (validationError !== null) return;
+      let session = sessionRef.current;
+      if (session !== null && session.getError()) {
+        teardown();
+        session = null;
+      }
+      if (session === null) {
+        session = createSongsetAudioSession(effectiveItems, {
+          onGlueFailure: (failure) => handleGlueFailureRef.current(failure),
+        });
+        attachSession(session, itemsKey);
+      }
+      await session.prepareAt(seconds);
+    },
+    [active, attachSession, effectiveItems, itemsKey, teardown, validationError],
+  );
 
   const retry = useCallback(async () => {
     if (!active) return;

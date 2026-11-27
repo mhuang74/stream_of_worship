@@ -10,6 +10,15 @@ vi.mock("@/contexts/SongsetListenContext", () => ({
   useSongsetListen: () => ({ audio: { pause: vi.fn() } }),
 }));
 
+const audioMocks = vi.hoisted(() => ({
+  play: vi.fn().mockResolvedValue(undefined),
+  pause: vi.fn(),
+  stop: vi.fn(),
+  seek: vi.fn(),
+  startAtSeconds: vi.fn().mockResolvedValue(undefined),
+  prepareAt: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/hooks/useSongsetAudio", () => ({
   useSongsetAudio: () => ({
     status: "idle",
@@ -17,13 +26,9 @@ vi.mock("@/hooks/useSongsetAudio", () => ({
     timelinePositionSeconds: 0,
     totalSeconds: 120,
     progress: null,
-    play: vi.fn().mockResolvedValue(undefined),
-    pause: vi.fn(),
-    stop: vi.fn(),
-    seek: vi.fn(),
-    startAtSeconds: vi.fn().mockResolvedValue(undefined),
     glueFailures: [],
     retryGlueAudio: vi.fn().mockResolvedValue(true),
+    ...audioMocks,
   }),
 }));
 
@@ -486,5 +491,61 @@ describe("ArrangementEditorSheet AI transition rail", () => {
       "Transition length changed from 4 to 8 beats"
     );
     expect(screen.queryByTestId("arrangement-glue-use-matching")).toBeNull();
+  });
+
+  it("pauses the preview transport before auditioning a stale take", async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pauseElement = vi.fn();
+    vi.stubGlobal(
+      "Audio",
+      class {
+        paused = true;
+        src = "";
+        onended: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        play = play;
+        pause = pauseElement;
+      }
+    );
+    renderSheet({
+      items: [
+        makeItem({
+          glueEnabled: true,
+          glueBeats: 8,
+          glue: junction({
+            glueBeats: 8,
+            state: "stale",
+            staleChange: { change: "beats", storedBeats: 4, currentBeats: 8 },
+            staleTake: {
+              id: TAKE_ID,
+              ordinal: 1,
+              seconds: 5,
+              beats: 4,
+              r2Key: "glues/old.wav",
+              descriptorKey: "a".repeat(64),
+              status: "ok",
+              reasons: [],
+              createdAt: "2026-11-22T09:00:00.000Z",
+            },
+            availableTakes: [],
+          }),
+        }),
+        successor(),
+      ],
+    });
+
+    fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
+    // The two transports never sound together, in either direction.
+    expect(audioMocks.pause).toHaveBeenCalled();
+    expect(play).toHaveBeenCalledTimes(1);
+
+    // Tapping again silences the element.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("arrangement-glue-stale-play").getAttribute("aria-label")
+      ).toBeTruthy()
+    );
+    fireEvent.click(screen.getByTestId("arrangement-glue-stale-play"));
+    expect(pauseElement).toHaveBeenCalled();
   });
 });
