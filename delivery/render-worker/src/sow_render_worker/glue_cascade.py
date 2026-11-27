@@ -393,7 +393,11 @@ class Cascade:
 
     def _gpu_result(self, backend, *, final=False):
         attempt = self.attempts.get(backend)
-        if attempt is None or "failure" in attempt:
+        if attempt is None:
+            return False
+        # A final read (salvage) still inspects an attempt that already timed
+        # out: the GPU may have written its result just after the last lookup.
+        if "failure" in attempt and not final:
             return False
         end = None if final else min(attempt["deadline_epoch"], self.route["deadline_epoch"])
         deadline = self._io_deadline(end)

@@ -509,6 +509,25 @@ def test_preparation_never_consumes_a_later_fallback_window(delivery, monkeypatc
     assert windows[1][1] == deadline - 120 - 60
 
 
+def test_salvage_promotes_a_gpu_result_written_after_the_timeout(delivery, monkeypatch, tmp_path):
+    # A GPU can write its result between the final lookup and cancellation. The
+    # attempt is already persisted as timed out, so recovery must still read and
+    # verify that stored object instead of failing the job paid.
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
+    delivery.state.backend_ready = {"runpod": 30}
+    runner = cascade.Cascade(None, delivery.job, tmp_path, None, None, delivery.log)
+    runner._gpu_stage("runpod")
+    assert runner.attempts["runpod"]["failure"] == "timeout"
+
+    delivery.travel(100)
+    recovering = cascade.Cascade(
+        None, delivery.job, tmp_path, None, None, delivery.log, saved_route=runner.route
+    )
+    recovering._salvage()
+    assert recovering.route["winner"]["backend"] == "runpod"
+    assert recovering.route["winner"]["result_key"] == runner.attempts["runpod"]["result_key"]
+
+
 def test_missing_remote_id_still_promotes_stored_result(delivery):
     delivery.state.remote_bad = True
     delivery.state.backend_ready = {"runpod": 3}
