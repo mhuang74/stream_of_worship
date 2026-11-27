@@ -467,6 +467,12 @@ class Cascade:
         limit = min(now + self.route["simdps_seconds"], self.route["deadline_epoch"])
         if limit <= now:
             raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
+        # Reserve only the windows still ahead of this stage: the ElevenLabs
+        # window, plus Modal's when RunPod is running.
+        reserved = self.route.get("elevenlabs_seconds", 0)
+        if backend == GPU_ORDER[0]:
+            reserved += self.route.get("simdps_seconds", 0)
+        self.preparation_epoch = self.route["deadline_epoch"] - reserved
         try:
             self._submit_gpu(backend, deadline_seconds=limit - now)
         except spine.GlueJobError as exc:

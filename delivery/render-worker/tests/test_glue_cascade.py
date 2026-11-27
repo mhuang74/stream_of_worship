@@ -467,6 +467,16 @@ def test_rejected_modal_submission_falls_to_elevenlabs(delivery, monkeypatch):
     assert delivery.submissions == [("runpod", 1000), ("elevenlabs", 1012)]
 
 
+def test_wide_runpod_window_still_leaves_modal_preparation_time(delivery, monkeypatch):
+    # 240 + 240 + 60 fits the Lambda budget, but a preparation epoch fixed at
+    # invocation start - 540 would already be spent when RunPod's window closes.
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "240")
+    delivery.state.backend_ready = {"modal": 3}
+    assert delivery.deliver() == "modal"
+    assert delivery.submissions == [("runpod", 1000), ("modal", 1240)]
+    assert delivery.saved.route["attempts"]["runpod"]["failure"] == "timeout"
+
+
 def test_missing_remote_id_still_promotes_stored_result(delivery):
     delivery.state.remote_bad = True
     delivery.state.backend_ready = {"runpod": 3}
