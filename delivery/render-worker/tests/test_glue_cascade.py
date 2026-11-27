@@ -477,6 +477,38 @@ def test_wide_runpod_window_still_leaves_modal_preparation_time(delivery, monkey
     assert delivery.saved.route["attempts"]["runpod"]["failure"] == "timeout"
 
 
+def test_preparation_never_consumes_a_later_fallback_window(delivery, monkeypatch, tmp_path):
+    # Preparation may run to its own deadline, so each stage must reserve the
+    # windows that still follow it: RunPod reserves Modal + ElevenLabs, Modal
+    # reserves ElevenLabs, and no window is truncated by the earlier one.
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "120")
+    runner = cascade.Cascade(None, delivery.job, tmp_path, None, None, delivery.log)
+    deadline = runner.route["deadline_epoch"]
+    windows = []
+
+    def submit(backend, *, deadline_seconds):
+        windows.append((backend, runner.preparation_epoch, deadline_seconds))
+        runner.attempts[backend] = {"deadline_epoch": 1000 + deadline_seconds}
+
+    def result(backend, *, final=False):
+        return bool(runner.attempts[backend].setdefault("failure", "timeout")) and False
+
+    monkeypatch.setattr(runner, "_submit_gpu", submit)
+    monkeypatch.setattr(runner, "_gpu_result", result)
+    monkeypatch.setattr(runner, "_save", lambda **kwargs: True)
+    monkeypatch.setattr(runner, "_cancel", lambda backend: None)
+    runner._simdps_pipeline()
+
+    assert [(backend, seconds) for backend, _, seconds in windows] == [
+        ("runpod", 120),
+        ("modal", 120),
+    ]
+    # RunPod reserves its own 120 s plus Modal's and ElevenLabs' windows; Modal
+    # reserves its own plus ElevenLabs', so the last fallback keeps 60 s.
+    assert windows[0][1] == deadline - 120 - 120 - 60
+    assert windows[1][1] == deadline - 120 - 60
+
+
 def test_missing_remote_id_still_promotes_stored_result(delivery):
     delivery.state.remote_bad = True
     delivery.state.backend_ready = {"runpod": 3}

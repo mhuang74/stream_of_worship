@@ -105,9 +105,9 @@ class Cascade:
         self.assets = assets or gpu.PreparationAssets(
             self.r2, work_dir, context, time_left=self._preparation_time
         )
-        self.preparation_epoch = self.route["deadline_epoch"] - (
-            2 * self.route.get("simdps_seconds", 0) + self.route.get("elevenlabs_seconds", 0)
-        )
+        # Overwritten per GPU stage and by _elevenlabs; the initial value only
+        # bounds asset preparation before the first provider is chosen.
+        self.preparation_epoch = self.route["deadline_epoch"]
         self.audio = None
         self.lookup_errors = set()
 
@@ -464,15 +464,17 @@ class Cascade:
 
     def _gpu_stage(self, backend):
         now = _time()
-        limit = min(now + self.route["simdps_seconds"], self.route["deadline_epoch"])
+        window = self.route.get("simdps_seconds", 0)
+        # Windows that still follow this stage: ElevenLabs always, plus Modal's
+        # when RunPod runs. Reserving the current window too keeps preparation
+        # from eating the budget of a later fallback.
+        later = self.route.get("elevenlabs_seconds", 0)
+        if backend != GPU_ORDER[-1]:
+            later += window
+        self.preparation_epoch = self.route["deadline_epoch"] - later - window
+        limit = min(now + window, self.route["deadline_epoch"] - later)
         if limit <= now:
             raise spine.GlueJobError(spine.GLUE_EXECUTION_DEADLINE, "free")
-        # Reserve only the windows still ahead of this stage: the ElevenLabs
-        # window, plus Modal's when RunPod is running.
-        reserved = self.route.get("elevenlabs_seconds", 0)
-        if backend == GPU_ORDER[0]:
-            reserved += self.route.get("simdps_seconds", 0)
-        self.preparation_epoch = self.route["deadline_epoch"] - reserved
         try:
             self._submit_gpu(backend, deadline_seconds=limit - now)
         except spine.GlueJobError as exc:
