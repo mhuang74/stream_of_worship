@@ -39,13 +39,13 @@ def fake_archive(tmp_path: Path, version: str = VERSION) -> Path:
     inner.mkdir(parents=True)
     for name in ("ffmpeg", "ffprobe"):
         binary = inner / name
-        _ = binary.write_text(FAKE_BINARY.format(version=version))
-        _ = binary.chmod(0o755)
+        binary.write_text(FAKE_BINARY.format(version=version))
+        binary.chmod(0o755)
 
     archive = tmp_path / f"ffmpeg-{version}-amd64-static.tar.xz"
     if archive.exists():
-        _ = archive.unlink()
-    _ = subprocess.run(
+        archive.unlink()
+    subprocess.run(
         ["tar", "-cJf", str(archive), "-C", str(stage), f"ffmpeg-{version}-amd64-static"],
         check=True,
     )
@@ -55,14 +55,14 @@ def fake_archive(tmp_path: Path, version: str = VERSION) -> Path:
 def stub_curl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mapping: dict[str, Path]) -> Path:
     """Put a fake ``curl`` on PATH that serves ``mapping`` by URL and logs requests."""
     bin_dir = tmp_path / "bin"
-    _ = bin_dir.mkdir(exist_ok=True)
+    bin_dir.mkdir(exist_ok=True)
     log = tmp_path / "curl.log"
 
     mapping_path = tmp_path / "curl-mapping.txt"
-    _ = mapping_path.write_text("".join(f"{url}\t{path}\n" for url, path in mapping.items()))
+    mapping_path.write_text("".join(f"{url}\t{path}\n" for url, path in mapping.items()))
 
     stub = bin_dir / "curl"
-    _ = stub.write_text(
+    stub.write_text(
         "#!/bin/sh\n"
         f'mapping="{mapping_path}"\n'
         f'log="{log}"\n'
@@ -80,7 +80,7 @@ def stub_curl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mapping: dict[str
         'cp "$src" "$out"\n'
         "exit 0\n"
     )
-    _ = stub.chmod(0o755)
+    stub.chmod(0o755)
 
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     return log
@@ -134,7 +134,7 @@ def test_checksum_mismatch_aborts_instead_of_installing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     archive = fake_archive(tmp_path)
-    _ = stub_curl(tmp_path, monkeypatch, {RELEASE_URL: archive, UPSTREAM_URL: archive})
+    stub_curl(tmp_path, monkeypatch, {RELEASE_URL: archive, UPSTREAM_URL: archive})
     dest = tmp_path / "dest"
 
     result = run_install(dest, "0" * 64)
