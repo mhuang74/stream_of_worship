@@ -255,8 +255,8 @@ Use per-function billed duration, SQS requests, CloudWatch ingestion, transfer, 
 ### Compatibility deployment and staging
 
 1. Deploy migration `0030_glue_provider_context`, the compatible worker and editor with `SOW_GLUE_PROVIDER=elevenlabs` in production. Keep deprecated credit response fields while previous browser bundles drain.
-2. Verify catalog clearance for sending excerpts and the guide to **both** GPU services. Use an isolated R2 bucket for staging. Add a one-day lifecycle rule scoped to `glue-simdps-tmp/` in staging and production. Preserve adjacent rules and canonical audio retention.
-3. Use the SimDPS image workflow to publish the Linux amd64 image. Run `docker run --gpus all --network none <image@digest> --check-model` on an isolated GPU host. Deploy that digest to the private RunPod queue endpoint with one L4 per worker, min 0, max 2, 10-second idle timeout and queue-delay scaling. Set `SIMDPS_R2_HOST` and `SIMDPS_R2_BUCKET` on the endpoint.
+2. Verify catalog clearance for sending excerpts and the guide to **both** GPU services. Staging writes under `glue-simdps-tmp/` in the worker's own `SOW_R2_BUCKET` (`stream-of-worship` in production), so both GPU services must read that bucket. Add a one-day lifecycle rule scoped to `glue-simdps-tmp/` there. Preserve adjacent rules and canonical audio retention.
+3. Use the SimDPS image workflow to publish the Linux amd64 image. Run `docker run --gpus all --network none <image@digest> --check-model` on an isolated GPU host. Deploy that digest to the private RunPod queue endpoint with one L4 per worker, min 0, max 2, 10-second idle timeout and queue-delay scaling. Set `SIMDPS_R2_HOST` and `SIMDPS_R2_BUCKET` on the endpoint: the host must match `[a-f0-9]{32}.r2.cloudflarestorage.com` and the bucket must be **the same bucket the Glue worker stages into** (`SOW_R2_BUCKET`). The worker rejects a signed URL whose path bucket differs, and reports that as `remote-failed` with no further detail.
 
    **Image input for both services** (immutable per commit, `ENV HF_HUB_OFFLINE=1` baked weights):
 

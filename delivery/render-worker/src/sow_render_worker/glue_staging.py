@@ -92,6 +92,23 @@ class StagingGeometryError(Exception):
 # ---------------------------------------------------------------------------
 
 
+def set_read_timeout(body: Any, seconds: float) -> None:
+    """Bound the next read of an R2 body, if that body still owns a socket.
+
+    botocore reaches the socket through urllib3 internals. Once the body has been
+    read to its end, urllib3 releases the connection and that lookup raises
+    ``AttributeError``; the response is already complete, so the next read is the
+    one that reports end of stream.
+    """
+    setter = getattr(body, "set_socket_timeout", None)
+    if setter is None:
+        return
+    try:
+        setter(seconds)
+    except AttributeError:
+        return
+
+
 class R2StagingStore:
     """Small R2 adapter used by staging (production and tests).
 
@@ -139,10 +156,7 @@ class R2StagingStore:
         try:
             while True:
                 if self._deadline is not None:
-                    if hasattr(body, "set_socket_timeout"):
-                        body.set_socket_timeout(min(5, self._time_left()))
-                    else:
-                        self._time_left()
+                    set_read_timeout(body, min(5, self._time_left()))
                 chunk = body.read(64 * 1024)
                 if not chunk:
                     break
@@ -198,10 +212,7 @@ class R2StagingStore:
             if self._deadline is not None:
                 chunks = []
                 while True:
-                    if hasattr(body, "set_socket_timeout"):
-                        body.set_socket_timeout(min(5, self._time_left()))
-                    else:
-                        self._time_left()
+                    set_read_timeout(body, min(5, self._time_left()))
                     chunk = body.read(64 * 1024)
                     if not chunk:
                         return b"".join(chunks)
@@ -949,4 +960,5 @@ __all__ = [
     "prepare_staged_take",
     "record_staged_take",
     "list_glue_takes_for_descriptor",
+    "set_read_timeout",
 ]
