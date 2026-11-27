@@ -26,9 +26,14 @@ describe("glue i18n", () => {
   });
 
   it("uses respectful Traditional Chinese register and full-width punctuation", () => {
-    expect(messages["zh-Hant"]["glue.reason.unsavedDraft"]).toContain("你");
-    expect(messages["zh-Hant"]["glue.reason.stale"]).toContain("敬拜歌單");
-    expect(messages["zh-Hant"]["glue.reason.unsavedDraft"]).toContain("。");
+    expect(messages["zh-Hant"]["glue.stale.recording"]).toContain("。");
+    expect(messages["zh-Hant"]["glue.job.takingLonger"]).toContain("你");
+    expect(messages["zh-Hant"]["glue.reason.stale"]).toBe(
+      "這段 AI 轉場是用其他設定製作的。"
+    );
+    expect(messages["zh-Hant"]["glue.reason.unsavedDraft"]).toBe(
+      "請先儲存編排變更再繼續。"
+    );
     expect(messages["zh-Hant"]["glue.reason.unsavedDraft"]).not.toContain(",");
   });
 });

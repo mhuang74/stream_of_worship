@@ -15,12 +15,15 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from sow_render_worker import glue_excerpts
 from sow_render_worker.glue_excerpts import (
     GLUE_EXCERPT_TOO_SHORT,
     SAMPLE_RATE,
     TARGET_EXCERPT_SECONDS,
+    GlueAudioUnavailable,
     GlueExcerptTooShort,
     PreparedExcerpt,
+    audio_unavailable_detail,
     build_excerpt,
     build_excerpt_key,
     canonical_steps_from_arrangement,
@@ -670,3 +673,19 @@ def test_null_steps_cache_check_skips_construction_after_decode(tmp_path: Path) 
     assert prepared.elevenlabs_song_id == "song-null"
     assert prepared.wav_path is None
     assert not any("INSERT INTO glue_excerpts" in sql for sql, _ in conn.executed)
+
+
+def test_decode_failure_names_the_side_in_its_detail(tmp_path, monkeypatch):
+    source = tmp_path / "recording.flac"
+    source.write_bytes(b"not audio")
+
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("ffmpeg")
+
+    monkeypatch.setattr(glue_excerpts.subprocess, "run", unavailable)
+    with pytest.raises(GlueAudioUnavailable) as caught:
+        build_excerpt(
+            source_path=source, steps=None, side="B", work_dir=tmp_path
+        )
+    assert (caught.value.cause, caught.value.side) == ("decode-failed", "B")
+    assert audio_unavailable_detail(caught.value) == "decode-failed side=B"

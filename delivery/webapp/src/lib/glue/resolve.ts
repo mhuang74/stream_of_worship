@@ -17,6 +17,7 @@ import {
   type GlueResolverItem,
 } from "@/lib/glue/quote";
 import { readGlueQuota, type GlueQuota } from "@/lib/glue/quota";
+import { describeGlueDescriptorDrift, type GlueStaleChangeDetail } from "@/lib/glue/stale";
 import type { SongsetItemDetail } from "@/lib/db/songsets";
 
 // Single readiness source for a Songset's outgoing Junction (spec:
@@ -49,6 +50,8 @@ export interface ResolvedGlueTake {
   id: string;
   ordinal: number;
   seconds: number;
+  /** The take's own Transition length, from its stored descriptor; null if unparsable. */
+  beats: number | null;
   r2Key: string;
   descriptorKey: string;
   status: "ok" | "check";
@@ -86,6 +89,10 @@ export interface ResolvedGlueJunction {
   descriptorKey: string | null;
   state: ResolvedGlueState;
   selectedTake: ResolvedGlueTake | null;
+  /** What changed since the selected take was made; null unless `state === "stale"`. */
+  staleChange: GlueStaleChangeDetail | null;
+  /** The selected take itself when `state === "stale"` (listen-only); else null. */
+  staleTake: ResolvedGlueTake | null;
   /** Ready takes for this descriptor, oldest ordinal first (free restore). */
   availableTakes: ResolvedGlueTakeOption[];
   activeJob: ResolvedGlueActiveJob | null;
@@ -186,12 +193,30 @@ function parseTakeQa(take: GlueTakeRow): { status: "ok" | "check"; reasons: stri
   return { status, reasons: parseReasons(take.reasonsJson) };
 }
 
+function parseTakeBeats(take: GlueTakeRow): number | null {
+  try {
+    const descriptor: unknown = JSON.parse(take.descriptorJson);
+    if (
+      typeof descriptor === "object" &&
+      descriptor !== null &&
+      "beats" in descriptor &&
+      typeof descriptor.beats === "number"
+    ) {
+      return descriptor.beats;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function toResolvedTake(take: GlueTakeRow): ResolvedGlueTake {
   const qa = parseTakeQa(take);
   return {
     id: take.id,
     ordinal: take.ordinal,
     seconds: canonicalSixDp(take.seconds ?? 0),
+    beats: parseTakeBeats(take),
     r2Key: take.r2Key as string,
     descriptorKey: take.descriptorKey,
     status: qa.status,
@@ -316,6 +341,8 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
         descriptorKey: null,
         state: "disabled",
         selectedTake: null,
+        staleChange: null,
+        staleTake: null,
         availableTakes: [],
         activeJob: null,
         quote: null,
@@ -354,6 +381,8 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
         descriptorKey,
         state: "disabled",
         selectedTake: null,
+        staleChange: null,
+        staleTake: null,
         availableTakes,
         activeJob,
         quote: null,
@@ -371,6 +400,9 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
             ? "stale"
             : "needs-generation",
         selectedTake: null,
+        // The rail shows the derivation reason here, not a descriptor diff.
+        staleChange: null,
+        staleTake: null,
         availableTakes: [],
         activeJob,
         quote: null,
@@ -390,6 +422,8 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
 
     let state: ResolvedGlueState;
     let unavailableReason: GlueUnavailableReason | null = null;
+    let staleChange: GlueStaleChangeDetail | null = null;
+    let staleTake: ResolvedGlueTake | null = null;
     if (activeJob) {
       state = activeJob.phase as ResolvedGlueState;
       unavailableReason = "active-job";
@@ -397,6 +431,11 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       state = "ready";
     } else if (selectedRow !== null) {
       state = "stale";
+      staleChange = describeGlueDescriptorDrift(
+        selectedRow.descriptorJson,
+        derivation.descriptorJson
+      );
+      staleTake = toResolvedTake(selectedRow);
     } else if (
       latestJob !== null &&
       latestJob.phase === "failed" &&
@@ -414,6 +453,8 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       descriptorKey,
       state,
       selectedTake,
+      staleChange,
+      staleTake,
       availableTakes,
       activeJob,
       quote: toJunctionQuote(derivation, cachedExcerptKeys, rejectedExcerptKeys),

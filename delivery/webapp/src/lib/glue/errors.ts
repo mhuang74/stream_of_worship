@@ -54,7 +54,9 @@ const GLUE_ERROR_MESSAGE_KEYS: Record<GlueErrorCode, string> = {
   GLUE_RETRY_PAID: "glue.error.retryPaid",
   GLUE_RETRY_PROCESSING_FREE: "glue.error.retryProcessingFree",
   GLUE_NOT_READY: "glue.error.notReady",
-  GLUE_PAID_NOT_CANCELLABLE: "glue.error.paidNotCancellable",
+  // Cancelling after contact is answered by a silent refresh, so this 409
+  // must never surface copy of its own.
+  GLUE_PAID_NOT_CANCELLABLE: "glue.error.unknown",
   GLUE_DAILY_LIMIT: "glue.error.dailyLimit",
   GLUE_DURATION_TOO_LONG: "glue.error.durationTooLong",
   GLUE_EXCERPT_TOO_SHORT: "glue.error.excerptTooShort",

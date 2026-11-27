@@ -22,6 +22,7 @@ import {
   sanitizeGlueError,
 } from "@/lib/glue/errors";
 import { logGlueError, logGlueEvent } from "@/lib/glue/log";
+import { attributeGlueProvider } from "@/lib/glue/observability";
 import { dispatchGlueMessage } from "@/lib/glue/dispatch";
 import {
   buildGlueQuota,
@@ -155,6 +156,54 @@ export function toGlueJobStatus(
   };
 }
 
+// One line per terminal job per instance. `statusOf` runs on every status
+// fetch and every SSE tick, so without this a one-second stream would log the
+// same completion sixty times. The set is bounded: an eviction only risks one
+// replayed line, never a missed one.
+const LOGGED_TERMINAL_JOBS = new Set<string>();
+const LOGGED_TERMINAL_LIMIT = 512;
+
+/** Discovery only reports jobs finished this recently, so a cold instance
+ * cannot replay an old Songset's history on mount. */
+const DISCOVERY_LOG_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * `glue.job.completed` for the operator runbook (spec §4.2): names the provider
+ * that produced the take, or `null` when the job never reached one. The
+ * provider context itself is never logged.
+ */
+function logTerminalGlueJob(row: GlueJobRecord, now: Date): void {
+  if (!isGlueJobTerminalPhase(row.phase)) return;
+  if (LOGGED_TERMINAL_JOBS.has(row.id)) return;
+  if (LOGGED_TERMINAL_JOBS.size >= LOGGED_TERMINAL_LIMIT) {
+    LOGGED_TERMINAL_JOBS.clear();
+  }
+  LOGGED_TERMINAL_JOBS.add(row.id);
+  const attribution = attributeGlueProvider(row.providerContextJson);
+  const finishedAt = row.finishedAt;
+  logGlueEvent("glue.job.completed", {
+    glueJobId: row.id,
+    userId: row.userId,
+    songsetId: row.songsetId,
+    fromItemId: row.fromItemId,
+    toItemId: row.toItemId,
+    attemptId: row.attemptId,
+    phase: row.phase,
+    takeId: row.resultingTakeId,
+    provider: attribution?.provider ?? null,
+    model: attribution?.model ?? null,
+    durationMs: row.startedAt
+      ? Math.max(
+          0,
+          (finishedAt instanceof Date ? finishedAt : now).getTime() -
+            row.startedAt.getTime()
+        )
+      : undefined,
+    errorCode: row.errorCode,
+    retryKind: row.retryKind,
+  });
+}
+
 /** Latest job per Junction for discovery after a reload or reconnect. */
 export function buildActiveGlueJobsPayload(
   rows: readonly GlueJobRecord[],
@@ -169,6 +218,11 @@ export function buildActiveGlueJobsPayload(
   const active = rows
     .filter((row) => row.active)
     .map((row) => toGlueJobStatus(row, quota, now));
+  for (const row of rows) {
+    if (row.finishedAt !== null && now.getTime() - row.finishedAt.getTime() <= DISCOVERY_LOG_WINDOW_MS) {
+      logTerminalGlueJob(row, now);
+    }
+  }
   return { active, latestByFromItemId };
 }
 
@@ -1117,6 +1171,7 @@ export async function createGlueJob(
 
 async function statusOf(row: GlueJobRecord, deps: GlueJobDeps): Promise<GlueJobStatus> {
   const quota = await deps.readQuota(row.userId, deps.now());
+  logTerminalGlueJob(row, deps.now());
   return toGlueJobStatus(row, quota, deps.now());
 }
 

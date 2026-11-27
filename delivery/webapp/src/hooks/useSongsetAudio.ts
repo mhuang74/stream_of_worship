@@ -76,6 +76,8 @@ export interface UseSongsetAudioResult {
   stop: () => void;
   seek: (seconds: number) => void;
   startAtSeconds: (seconds: number) => Promise<void>;
+  /** Decodes the item at `seconds` plus its successor's junction before playing. */
+  prepareAt: (seconds: number) => Promise<void>;
   /** Recreates the session at the current position and replays. */
   retry: () => Promise<void>;
   /** Re-fetches the same immutable take; rebuilds only when it is reachable. */
@@ -441,6 +443,12 @@ export function useSongsetAudio(
     [seek, play],
   );
 
+  const prepareAt = useCallback(async (seconds: number) => {
+    const session = sessionRef.current;
+    if (!session) return;
+    await session.prepareAt(seconds);
+  }, []);
+
   const retry = useCallback(async () => {
     if (!active) return;
     const position =
@@ -549,6 +557,7 @@ export function useSongsetAudio(
     stop,
     seek,
     startAtSeconds,
+    prepareAt,
     retry,
     retryGlueAudio,
   };

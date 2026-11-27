@@ -486,3 +486,33 @@ def test_prepare_audio_reports_unsupported_window(tmp_path):
         None,
         time_left=lambda: 60,
     ) == (None, "unsupported-window")
+
+
+def test_prepare_audio_names_the_largest_supported_window(tmp_path, monkeypatch):
+    frames = round(10 * provider.SAMPLE_RATE)
+    excerpts = []
+    for name in ("a", "b"):
+        path = tmp_path / f"{name}.wav"
+        sf.write(path, np.zeros((frames, 2), dtype="<i2"), provider.SAMPLE_RATE, subtype="PCM_16")
+        excerpts.append(SimpleNamespace(wav_path=path))
+    monkeypatch.setattr(provider, "download_catalog_audio", lambda *a, **k: tmp_path / "stem.flac")
+    monkeypatch.setattr(
+        provider, "build_guide", lambda *a, **k: np.zeros((frames, 2), dtype="<i2")
+    )
+    inputs = SimpleNamespace(
+        descriptor={"beats": 16, "toTempoBpm": 70.0},
+        to_item={"recording_hash_prefix": "a" * 16},
+        to_steps=[[0, 2.0]],
+    )
+    # 16 beats at 70 BPM is a 13.7 s fill, which no 15 s latent window holds;
+    # 8 beats (6.9 s) does, so the failure names the length that fits.
+    assert provider.prepare_audio(
+        SimpleNamespace(seed=4321),
+        inputs,
+        *excerpts,
+        None,
+        tmp_path,
+        None,
+        None,
+        time_left=lambda: 60,
+    ) == (None, "unsupported-window supportedBeats=8")

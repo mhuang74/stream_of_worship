@@ -39,6 +39,7 @@ import { formatDuration } from "@/lib/format"
 import { useLocale } from "@/hooks/useLocale"
 import { optionKey, type TranslationKey } from "@/lib/i18n/messages"
 import { resumeGlueJobRequest } from "@/lib/glue/client"
+import { glueStaleMessage } from "@/lib/glue/stale-copy"
 import type {
   GlueRenderPreflight,
   GlueRenderPreflightGlue,
@@ -109,6 +110,7 @@ const GLUE_PREFLIGHT_REASON_KEYS: Readonly<Record<string, TranslationKey>> = {
   GLUE_COPYRIGHT_REJECTED: "render.gluePreflight.reason.copyright",
   GLUE_EXCERPT_TOO_SHORT: "render.gluePreflight.reason.tooShort",
   GLUE_AUDIO_UNAVAILABLE: "render.gluePreflight.reason.audioUnavailable",
+  GLUE_JUNCTION_AUDIO_UNAVAILABLE: "render.gluePreflight.reason.junctionAudioUnavailable",
   GLUE_EXECUTION_DEADLINE: "render.gluePreflight.reason.executionDeadline",
   GLUE_DISPATCH_FAILED: "render.gluePreflight.reason.dispatchFailed",
   GLUE_INPUTS_CHANGED: "render.gluePreflight.reason.inputsChanged",
@@ -293,10 +295,16 @@ export function RenderForm({
                         <span>{glue.toTitle}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {t(
-                          GLUE_PREFLIGHT_REASON_KEYS[glue.reasonCode] ??
-                            "render.gluePreflight.reason.unknown"
-                        )}
+                        {glue.reasonCode === "GLUE_STALE_SNAPSHOT" &&
+                        glue.staleChange !== null
+                          ? glueStaleMessage(glue.staleChange, t, {
+                              from: glue.fromTitle,
+                              to: glue.toTitle,
+                            })
+                          : t(
+                              GLUE_PREFLIGHT_REASON_KEYS[glue.reasonCode] ??
+                                "render.gluePreflight.reason.unknown"
+                            )}
                       </p>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         {phaseLabel && (

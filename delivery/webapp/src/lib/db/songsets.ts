@@ -32,6 +32,8 @@ import {
   type GlueJunctionDerivation,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
+import type { GlueBeats } from "@/lib/glue/descriptor";
+import type { GlueStaleChangeDetail } from "@/lib/glue/stale";
 import { eq, and, desc, gt, sql, asc, ilike, or, inArray, isNull, isNotNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { SONGSET_MAX_DURATION_SECONDS, SONGSET_MAX_SONGS } from "@/lib/constants";
@@ -584,6 +586,8 @@ function requireJunction(
     descriptorKey: null,
     state: "disabled",
     selectedTake: null,
+    staleChange: null,
+    staleTake: null,
     availableTakes: [],
     activeJob: null,
     quote: null,
@@ -1662,7 +1666,7 @@ async function validateGlueSelectionForPatch(args: {
   songsetId: string;
   userId: number;
   itemId: string;
-  patch: { glueEnabled?: boolean; glueActiveTakeId?: string | null };
+  patch: { glueEnabled?: boolean; glueBeats?: GlueBeats; glueActiveTakeId?: string | null };
 }): Promise<{ selectedTakeId: string | null; expectedUpdatedAt: string } | null> {
   const itemRows =
     (await loadGlueItemRows([args.songsetId], args.userId)).get(args.songsetId) ?? [];
@@ -1678,7 +1682,12 @@ async function validateGlueSelectionForPatch(args: {
     );
   }
 
-  const derivation: GlueJunctionDerivation = deriveGlueJunction(item, to);
+  // Validate against the beats this PATCH will persist: a length change must
+  // re-select, not leave the previous take stale.
+  const derivation: GlueJunctionDerivation = deriveGlueJunction(
+    { ...item, glueBeats: args.patch.glueBeats ?? item.glueBeats },
+    to
+  );
   const explicitTakeId =
     args.patch.glueActiveTakeId === undefined ? undefined : args.patch.glueActiveTakeId;
 
@@ -1705,7 +1714,7 @@ async function validateGlueSelectionForPatch(args: {
     return { selectedTakeId: explicitTakeId, expectedUpdatedAt: item.updatedAt };
   }
 
-  if (args.patch.glueEnabled === true && derivation.ok) {
+  if ((args.patch.glueEnabled === true || args.patch.glueBeats !== undefined) && derivation.ok) {
     const take = await loadNewestReadyGlueTake(args.userId, derivation.descriptorKey);
     return { selectedTakeId: take?.id ?? null, expectedUpdatedAt: item.updatedAt };
   }
@@ -1922,7 +1931,8 @@ export async function updateSongsetItem(
 ): Promise<SongsetItemDetail | null> {
   const needsSelectionValidation =
     (patch.glueActiveTakeId !== undefined && patch.glueActiveTakeId !== null) ||
-    patch.glueEnabled === true;
+    patch.glueEnabled === true ||
+    patch.glueBeats !== undefined;
   const selection = needsSelectionValidation
     ? await validateGlueSelectionForPatch({
         songsetId,
@@ -2163,6 +2173,8 @@ export interface GlueRenderPreflightGlue {
   fromTitle: string;
   toTitle: string;
   reasonCode: string;
+  /** What changed since the selected take was made; null unless stale. */
+  staleChange: GlueStaleChangeDetail | null;
   jobId: string | null;
   jobPhase: string | null;
   retryKind: string | null;
@@ -2311,6 +2323,7 @@ function gluePreflightEntry(
     fromTitle: from?.title ?? "Unknown Song",
     toTitle: to?.title ?? "Unknown Song",
     reasonCode: glueRenderReasonCode(junction, job),
+    staleChange: junction.staleChange,
     jobId: junction.activeJob?.id ?? job?.id ?? null,
     jobPhase: junction.activeJob?.phase ?? job?.phase ?? null,
     retryKind: job?.retryKind ?? null,

@@ -96,6 +96,12 @@ export interface SongsetAudioSession {
   destroy(): void;
   seek(seconds: number): void;
   startAtSeconds(seconds: number): Promise<void>;
+  /**
+   * Decodes the item at `seconds` and the one after it, so a window that
+   * starts before a junction has its AI take ready before the playhead
+   * reaches it. Idempotent; failures propagate untouched.
+   */
+  prepareAt(seconds: number): Promise<void>;
   getTimelinePositionSeconds(): number;
   isPlaying(): boolean;
   getProgress(): SongsetAudioProgress | null;
@@ -910,6 +916,15 @@ export function createSongsetAudioSession(
     await play();
   }
 
+  async function prepareAt(seconds: number): Promise<void> {
+    if (inert) return;
+    const index = itemIndexAt(clamp(seconds, 0, totalSeconds));
+    await prepare(index);
+    // `runPrepare(index + 1)` is what decodes the AI take of the junction
+    // between the two items, so a lead-in never plays into a silent junction.
+    if (index + 1 < itemCount) await prepare(index + 1);
+  }
+
   function getTimelinePositionSeconds(): number {
     return playing ? clockPosition() : clamp(position, 0, totalSeconds);
   }
@@ -947,6 +962,7 @@ export function createSongsetAudioSession(
     destroy,
     seek,
     startAtSeconds,
+    prepareAt,
     getTimelinePositionSeconds,
     isPlaying,
     getProgress,

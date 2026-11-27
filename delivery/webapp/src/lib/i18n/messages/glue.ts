@@ -11,18 +11,32 @@ export const glueBundle = bundle({
     "glue.toggleAria": "Use an AI transition into {song}",
     "glue.beatsLabel": "Transition length",
     "glue.beatsOption": "{beats} beats",
-    "glue.seconds": "{seconds} s",
-    "glue.generatedLength": "About {seconds} s of AI transition music",
+    "glue.minimumLength": "At this tempo the shortest AI transition is about 3 s.",
     "glue.remaining": "{remaining} of {limit} AI transition attempts remaining",
     "glue.resetAt": "Resets at {time}",
-    "glue.selected": "Selected AI transition: {seconds} s",
     "glue.checkWarning":
       "This AI transition was measured against the reference audio and its ending energy may not quite match. Give it a listen before you render. This is not a judgement about vocals or musical fit.",
     "glue.takes.label": "Earlier AI transitions",
     "glue.takes.none": "Choose a previous version",
-    "glue.takes.option": "Version {ordinal} · {status} · {seconds} s · {time}",
-    "glue.takes.ready": "Ready",
-    "glue.takes.check": "Check",
+    "glue.takes.option": "Version {ordinal} · {time}",
+    "glue.takes.checkSuffix": " · needs a listen",
+    "glue.takes.mismatch": "Version {ordinal} · doesn't match current settings",
+    "glue.takes.mismatchBeats":
+      "Version {ordinal} · {beats} beats · doesn't match current settings",
+    "glue.previewClip": "Preview transition",
+    "glue.previewPause": "Pause preview",
+    "glue.previewLoading": "Preparing the preview…",
+    "glue.previewSaveFirst":
+      "Save your arrangement changes to preview this AI transition.",
+    "glue.stale.recording":
+      "The recording of {song} changed, so this AI transition no longer matches.",
+    "glue.stale.arrangement":
+      "The arrangement of {song} changed, so this AI transition no longer matches.",
+    "glue.stale.tempo":
+      "The tempo of {song} changed, so this AI transition no longer matches.",
+    "glue.stale.beats":
+      "Transition length changed from {from} to {to} beats, so this AI transition no longer matches.",
+    "glue.staleHeal": "Use the version that matches (free)",
     "glue.audioFallback":
       "The AI transition from {from} to {to} could not play. You can load the same audio again.",
     "glue.retryAudio": "Retry audio",
@@ -37,8 +51,7 @@ export const glueBundle = bundle({
     "glue.state.stale": "Needs a refresh",
     "glue.state.needs-generation": "Not created yet",
     "glue.state.disabled": "Off",
-    "glue.reason.unsavedDraft":
-      "Save your arrangement changes to refresh this AI transition.",
+    "glue.reason.unsavedDraft": "Save your arrangement changes to continue.",
     "glue.reason.noNext": "This is the last Song.",
     "glue.reason.noTempo":
       "The next Song does not have a detected tempo yet.",
@@ -50,8 +63,7 @@ export const glueBundle = bundle({
     "glue.reason.activeJob": "An AI transition is already being made.",
     "glue.reason.tooShort": "This junction is too short for an AI transition.",
     "glue.reason.copyright": "This recording cannot be used for an AI transition.",
-    "glue.reason.stale":
-      "The Song sequence changed. Save to refresh this AI transition.",
+    "glue.reason.stale": "This AI transition was made for different settings.",
     "glue.reason.failed": "The last AI transition attempt failed.",
     "glue.reason.notReady": "This AI transition is not ready yet.",
     "glue.reason.unknown": "AI transitions are not available right now.",
@@ -71,8 +83,6 @@ export const glueBundle = bundle({
     "glue.error.retryProcessingFree":
       "The AI audio was already created. Retry without using another attempt.",
     "glue.error.notReady": "This AI transition is not ready yet.",
-    "glue.error.paidNotCancellable":
-      "This paid request can't be cancelled or refunded.",
     "glue.error.dailyLimit": "No paid AI transitions are left today.",
     "glue.error.durationTooLong":
       "This junction is too long for an AI transition. Choose fewer beats.",
@@ -94,7 +104,17 @@ export const glueBundle = bundle({
     "glue.error.audioUnavailable":
       "The AI transition audio could not be loaded. Try again.",
     "glue.error.junctionAudioUnavailable":
-      "Audio is unavailable for this junction. Adjust the arrangement or transition length, then try again.",
+      "This junction can't be generated right now. Change the transition length or the arrangement, then try again.",
+    "glue.error.junctionTooLong":
+      "Too long for this junction. {beats} beats will work.",
+    "glue.error.junctionTooLongNoBeats":
+      "Too long for these arrangements. Shorten the arrangement on either side, then try again.",
+    "glue.error.junctionGuideShort":
+      "The next Song has too little arranged audio. Extend its arrangement, then try again.",
+    "glue.error.junctionSourceUnavailable":
+      "The audio for {song} is unavailable. Choose another recording for it.",
+    "glue.error.junctionSourceUnreadable":
+      "The audio for {song} can't be read. Choose another recording for it.",
     "glue.job.heading": "AI transition",
     "glue.job.reference": "Request {id}",
     "glue.job.elapsed": "{seconds} s elapsed",
@@ -105,7 +125,6 @@ export const glueBundle = bundle({
     "glue.job.cancel": "Cancel",
     "glue.job.cancelling": "Cancelling…",
     "glue.job.cancelled": "The AI transition was cancelled. No attempt was used.",
-    "glue.job.contacted": "This paid request can't be cancelled or refunded.",
     "glue.job.discovering": "Checking for AI transitions…",
     "glue.confirm.heading": "Create this AI transition?",
     "glue.confirm.body":
@@ -131,18 +150,26 @@ export const glueBundle = bundle({
     "glue.toggleAria": "在接續到「{song}」時使用 AI 轉場",
     "glue.beatsLabel": "轉場長度",
     "glue.beatsOption": "{beats} 拍",
-    "glue.seconds": "{seconds} 秒",
-    "glue.generatedLength": "約 {seconds} 秒的 AI 轉場",
+    "glue.minimumLength": "這個速度下，最短的 AI 轉場約 3 秒。",
     "glue.remaining": "目前剩餘 {remaining}／{limit} 次 AI 轉場額度",
     "glue.resetAt": "{time} 重置",
-    "glue.selected": "已選用 {seconds} 秒的 AI 轉場",
     "glue.checkWarning":
       "這段轉場已與參考音訊比對，結尾能量可能不太合，建議先試聽再輸出。這不是對人聲或音樂適配度的評價。",
     "glue.takes.label": "先前的 AI 轉場",
     "glue.takes.none": "選擇先前的版本",
-    "glue.takes.option": "第 {ordinal} 版 · {status} · {seconds} 秒 · {time}",
-    "glue.takes.ready": "已完成",
-    "glue.takes.check": "請試聽",
+    "glue.takes.option": "第 {ordinal} 版 · {time}",
+    "glue.takes.checkSuffix": " · 建議先試聽",
+    "glue.takes.mismatch": "第 {ordinal} 版 · 與目前設定不符",
+    "glue.takes.mismatchBeats": "第 {ordinal} 版 · {beats} 拍 · 與目前設定不符",
+    "glue.previewClip": "試聽轉場",
+    "glue.previewPause": "暫停試聽",
+    "glue.previewLoading": "正在準備試聽…",
+    "glue.previewSaveFirst": "請先儲存編排變更，再試聽這段 AI 轉場。",
+    "glue.stale.recording": "「{song}」的錄音已變更，這段 AI 轉場已不再符合。",
+    "glue.stale.arrangement": "「{song}」的編排已變更，這段 AI 轉場已不再符合。",
+    "glue.stale.tempo": "「{song}」的速度已變更，這段 AI 轉場已不再符合。",
+    "glue.stale.beats": "轉場長度由 {from} 拍改為 {to} 拍，這段 AI 轉場已不再符合。",
+    "glue.staleHeal": "改用符合目前設定的版本（免費）",
     "glue.audioFallback":
       "「{from}」到「{to}」的 AI 轉場無法播放，可以重新載入同一段音訊。",
     "glue.retryAudio": "重新載入音訊",
@@ -157,7 +184,7 @@ export const glueBundle = bundle({
     "glue.state.stale": "需要重新整理",
     "glue.state.needs-generation": "尚未建立",
     "glue.state.disabled": "已關閉",
-    "glue.reason.unsavedDraft": "請你先儲存編排變更，再重新整理 AI 轉場。",
+    "glue.reason.unsavedDraft": "請先儲存編排變更再繼續。",
     "glue.reason.noNext": "這是最後一首詩歌。",
     "glue.reason.noTempo": "下一首詩歌還沒有偵測到速度，請稍後再試。",
     "glue.reason.noAnalysis": "請先為這首詩歌加入段落與節拍分析。",
@@ -166,7 +193,7 @@ export const glueBundle = bundle({
     "glue.reason.activeJob": "已有 AI 轉場正在製作中。",
     "glue.reason.tooShort": "這個接點太短，無法製作 AI 轉場。",
     "glue.reason.copyright": "這首錄音無法用於 AI 轉場。",
-    "glue.reason.stale": "敬拜歌單的順序已變更，請儲存後重新整理 AI 轉場。",
+    "glue.reason.stale": "這段 AI 轉場是用其他設定製作的。",
     "glue.reason.failed": "上一次 AI 轉場沒有成功。",
     "glue.reason.notReady": "這段 AI 轉場還沒準備好。",
     "glue.reason.unknown": "目前無法使用 AI 轉場。",
@@ -182,7 +209,6 @@ export const glueBundle = bundle({
     "glue.error.retryPaid": "上一次需要重新付費才能再試，請選「再試一次」。",
     "glue.error.retryProcessingFree": "AI 音訊已建立，請重試，不會再用額外的次數。",
     "glue.error.notReady": "這段 AI 轉場還沒準備好。",
-    "glue.error.paidNotCancellable": "這個付費請求無法取消或退款。",
     "glue.error.dailyLimit": "今天的付費 AI 轉場次數已用完。",
     "glue.error.durationTooLong": "這個接點太長，無法製作 AI 轉場，請減少拍數。",
     "glue.error.excerptTooShort": "這個接點其中一側太短，無法製作 AI 轉場。",
@@ -195,7 +221,13 @@ export const glueBundle = bundle({
     "glue.error.copyrightRejected": "這首錄音無法用於 AI 轉場。",
     "glue.error.audioUnavailable": "無法載入 AI 轉場音訊，請再試一次。",
     "glue.error.junctionAudioUnavailable":
-      "這個銜接點目前無法產生音訊。請調整編排或轉場長度後再試一次。",
+      "這個接點的音訊目前無法產生；請調整編排或轉場長度後再試。",
+    "glue.error.junctionTooLong": "這個接點太長，無法製作 AI 轉場；改用 {beats} 拍即可。",
+    "glue.error.junctionTooLongNoBeats":
+      "兩側的編排都太長，無法製作 AI 轉場；請縮短其中一側的編排後再試。",
+    "glue.error.junctionGuideShort": "下一首詩歌可用的編排段落太少；請延長它的編排後再試。",
+    "glue.error.junctionSourceUnavailable": "「{song}」的錄音音訊目前無法取得；請為它選擇其他錄音。",
+    "glue.error.junctionSourceUnreadable": "「{song}」的錄音音訊無法讀取；請為它選擇其他錄音。",
     "glue.job.heading": "AI 轉場",
     "glue.job.reference": "請求 {id}",
     "glue.job.elapsed": "已進行 {seconds} 秒",
@@ -205,7 +237,6 @@ export const glueBundle = bundle({
     "glue.job.cancel": "取消",
     "glue.job.cancelling": "正在取消…",
     "glue.job.cancelled": "AI 轉場已取消，沒有使用次數。",
-    "glue.job.contacted": "這個付費請求無法取消或退款。",
     "glue.job.discovering": "正在確認 AI 轉場狀態…",
     "glue.confirm.heading": "要建立這段 AI 轉場嗎？",
     "glue.confirm.body":

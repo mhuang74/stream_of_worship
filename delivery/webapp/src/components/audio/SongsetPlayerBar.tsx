@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/useLocale";
 import { useSongsetListen } from "@/contexts/SongsetListenContext";
 import { findTimelineItemIndex } from "@/lib/arrangements";
+import { contextSecondsForTempo } from "@/lib/audio/glue-preview";
 import { cn } from "@/lib/utils";
 import { SongsetLyricsPanel } from "./SongsetLyricsPanel";
 import { useLyricsPullup } from "./useLyricsPullup";
@@ -323,7 +324,7 @@ export function SongsetPlayerBar() {
       )}
 
       {/* Proportional seek bar: one segment per Songset Item */}
-      <div className="w-full pt-2 lg:pt-3">
+      <div className="relative w-full pt-2 lg:pt-3">
         <div
           ref={seekBarRef}
           role="slider"
@@ -430,6 +431,57 @@ export function SongsetPlayerBar() {
             )}
           </div>
         </div>
+
+        {/* The AI windows drawn inside the slider are visual only: a slider's
+            descendants are presentational, so the tappable copy is a sibling
+            layer whose buttons keep their own tab stop. */}
+        {totalSeconds > 0 && (
+          <div className="pointer-events-none absolute inset-x-3 top-2 h-2 lg:top-3">
+            {timeline.items.map((item, index) => {
+              const glue = item.glueWindowBefore;
+              if (glue === null) return null;
+              const fromTitle =
+                (index > 0 ? items[index - 1]?.song?.title : null) ??
+                t("songsets.listen.untitled");
+              const toTitle =
+                items[index]?.song?.title ?? t("songsets.listen.untitled");
+              const tempoBpm = items[index - 1]?.recording?.tempoBpm ?? null;
+              const leadIn = contextSecondsForTempo(tempoBpm);
+              const width = glue.endSeconds - glue.startSeconds;
+              return (
+                <button
+                  key={`glue-preview-${glue.takeId}`}
+                  type="button"
+                  data-testid="songset-glue-preview"
+                  data-take-id={glue.takeId}
+                  aria-label={t("songsets.listen.glueSegmentAria")
+                    .replace("{from}", fromTitle)
+                    .replace("{to}", toTitle)}
+                  // A 3-8 s transition is a few pixels wide, so the hit area is
+                  // widened (invisibly) around the segment it stands for.
+                  className="pointer-events-auto absolute inset-y-0 -translate-x-1/2 cursor-pointer rounded-full bg-transparent"
+                  style={{
+                    left: `${((glue.startSeconds + width / 2) / totalSeconds) * 100}%`,
+                    width: `${(width / totalSeconds) * 100}%`,
+                    minWidth: 16,
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const target = Math.min(
+                      Math.max(glue.startSeconds - leadIn, 0),
+                      totalSeconds,
+                    );
+                    void audio
+                      .prepareAt(target)
+                      .catch(() => undefined)
+                      .then(() => audio.startAtSeconds(target));
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 px-3 pb-2 pt-1 lg:px-4 lg:pb-3">

@@ -1518,4 +1518,24 @@ describe("songset audio Glue scheduling", () => {
       ).length,
     ).toBe(glueCalls);
   });
+
+  it("prepareAt decodes the item and the next junction before playback", async () => {
+    const { cache, load } = cacheSpy();
+    const { session, context } = buildSession(glueItems(), { audioBytesCache: cache });
+    context.decodeAudioData
+      .mockResolvedValueOnce(decodedBuffer(1000)) // A recording
+      .mockResolvedValueOnce(decodedBuffer(1000)) // B recording
+      .mockResolvedValueOnce(decodedBuffer(300)); // 3 s Glue
+
+    // 6 s is inside A, whose junction into B carries take-1.
+    await session.prepareAt(6);
+
+    expect(load.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining(["hash-a", "hash-b", "glue:take-1"]),
+    );
+
+    const fetches = load.mock.calls.length;
+    await session.prepareAt(6);
+    expect(load.mock.calls.length).toBe(fetches);
+  });
 });

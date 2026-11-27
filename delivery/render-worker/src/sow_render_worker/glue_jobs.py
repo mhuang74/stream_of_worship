@@ -39,6 +39,7 @@ from sow_render_worker.glue_excerpts import (
     GlueAudioUnavailable,
     GlueExcerptTooShort,
     PreparedExcerpt,
+    audio_unavailable_detail,
     canonical_steps_from_arrangement,
     prepare_excerpt,
 )
@@ -390,7 +391,7 @@ def _handle_failure(
             phase="failed",
             code=GLUE_AUDIO_UNAVAILABLE,
             retry_kind=retry_kind,
-            detail=str(exc),
+            detail=audio_unavailable_detail(exc),
             release=not contacted,
             log=log,
             event="glue.job.failed",

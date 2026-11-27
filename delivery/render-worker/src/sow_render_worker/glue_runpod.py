@@ -183,18 +183,61 @@ def encode_flac(samples, subtype):
     return data
 
 
+def _supported_window(
+    a_frames: int,
+    b_frames: int,
+    guide_frames: int,
+    descriptor,
+    gates: set[str],
+) -> int | None:
+    """Largest transition length whose window passes every gate that rejected.
+
+    `latent_window` rejects a fill that is too long and `search_candidates` can
+    reject one the guide is too short for, so each candidate length is re-run
+    through both rather than extrapolated from the requested one.
+    """
+    for beats in (16, 8, 4, 2):
+        fill = milliseconds_to_frames(
+            generation_duration_ms(beats, descriptor["toTempoBpm"])
+        )
+        try:
+            window = latent_window(a_frames, fill, b_frames)
+        except ValueError:
+            continue
+        if "search" in gates and search_candidates(guide_frames, window) <= 0:
+            continue
+        return beats
+    return None
+
+
+def _unsupported_detail(supported: int | None) -> str:
+    """Name the gate that rejected and, when one exists, the length that fits."""
+    detail = "unsupported-window"
+    if supported is not None:
+        detail = f"{detail} supportedBeats={supported}"
+    return detail
+
+
 def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, time_left=None):
     time_left = time_left or (lambda: preparation_time(lambda_context))
     a_pcm, b_pcm = (
         sf.read(excerpt.wav_path, dtype="int16", always_2d=True)[0] for excerpt in (a, b)
     )
+    descriptor = inputs.descriptor
     fill = milliseconds_to_frames(
-        generation_duration_ms(inputs.descriptor["beats"], inputs.descriptor["toTempoBpm"])
+        generation_duration_ms(descriptor["beats"], descriptor["toTempoBpm"])
     )
+    gates: set[str] = set()
+    window: tuple[int, int] | None
     try:
         window = latent_window(len(a_pcm), fill, len(b_pcm))
     except ValueError:
-        return None, "unsupported-window"
+        window = None
+        gates.add("latent")
+        # No shorter fill fits either, so the answer cannot change once the
+        # guide exists: report it without paying for the download.
+        if _supported_window(len(a_pcm), len(b_pcm), 0, descriptor, gates) is None:
+            return None, _unsupported_detail(None)
 
     prefix = inputs.to_item["recording_hash_prefix"]
     stem = download_catalog_audio(
@@ -212,7 +255,8 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, ti
             )
         except GlueExcerptTooShort:
             pass
-    if guide is None or not search_candidates(len(guide), window):
+    if guide is None or (window is not None and not search_candidates(len(guide), window)):
+        gates.add("search")
         search_source = "incoming_mix"
         mix = assets.download_audio(prefix)
         if mix is None:
@@ -222,9 +266,30 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, ti
                 Path(mix), inputs.to_steps, work_dir, timeout=time_left()
             )
         except GlueExcerptTooShort:
-            return None, "insufficient-search-source"
-    if not search_candidates(len(guide), window):
+            guide = None
+    if guide is None:
+        # Neither the stem nor the mix can supply search material.
+        if window is None:
+            return None, _unsupported_detail(None)
         return None, "insufficient-search-source"
+
+    if window is None:
+        # The requested fill did not fit, so report the largest one that does;
+        # every gate that already rejected is re-run for the candidates.
+        return None, _unsupported_detail(
+            _supported_window(
+                len(a_pcm), len(b_pcm), len(guide), descriptor, gates | {"search"}
+            )
+        )
+    if not search_candidates(len(guide), window):
+        # The guide is too short for the requested window. If a shorter
+        # transition fits, that is the input worth naming instead of blaming
+        # the arrangement.
+        gates.add("search")
+        supported = _supported_window(len(a_pcm), len(b_pcm), len(guide), descriptor, gates)
+        if supported is None:
+            return None, "insufficient-search-source"
+        return None, _unsupported_detail(supported)
     montage = np.concatenate((a_pcm, np.zeros((fill, 2), dtype=np.int16), b_pcm))
     return (
         encode_flac(montage, "PCM_16"),
