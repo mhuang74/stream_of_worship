@@ -35,6 +35,7 @@ function status(overrides: Partial<GlueJobStatus> = {}): GlueJobStatus {
     songsetId: "songset-1",
     fromItemId: "item-a",
     toItemId: "item-b",
+    descriptorKey: "descriptor-1",
     phase: "queued",
     active: true,
     takeMode: "new-take",
@@ -156,10 +157,11 @@ describe("useGlueJob", () => {
     await waitFor(() => expect(result.current.phase).toBe("queued"));
   });
 
-  it("falls back to discovery after a dropped stream and reconnects", async () => {
+  it("reconnects to the same job and discovers a take that completes between streams", async () => {
     vi.useFakeTimers();
-    const calls = installFetch();
-    renderHook(() =>
+    const jobs = [status({ phase: "composing" })];
+    const calls = installFetch(jobs);
+    const { result } = renderHook(() =>
       useGlueJob({ jobId: "job-1", songsetId: "songset-1", fromItemId: "item-a" })
     );
 
@@ -176,6 +178,24 @@ describe("useGlueJob", () => {
 
     expect(calls.discovery).toBe(2);
     expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[0].closed).toBe(true);
+    expect(FakeEventSource.instances[1].url).toBe("/api/glue-jobs/job-1/events");
+
+    act(() => FakeEventSource.instances[1].fail());
+    jobs[0] = status({ phase: "ready", active: false, resultingTakeId: "take-1" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(calls.discovery).toBe(3);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[1].closed).toBe(true);
+    expect(result.current.terminal).toBe(true);
+    expect(result.current.status).toMatchObject({
+      id: "job-1",
+      phase: "ready",
+      resultingTakeId: "take-1",
+    });
   });
 
   it("discovers again when the tab becomes visible", async () => {

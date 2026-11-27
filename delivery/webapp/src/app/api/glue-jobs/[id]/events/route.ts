@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const POLL_INTERVAL_MS = 1_000;
+// Vercel counts streaming time toward the 60-second function limit.
+const STREAM_BUDGET_MS = 50_000;
 
 function sseHeaders(): HeadersInit {
   return {
@@ -24,82 +26,104 @@ function sseHeaders(): HeadersInit {
 
 /**
  * One JSON snapshot per second as `data: <json>\n\n` (spec §2.4, §6.3). The
- * stream closes as soon as a terminal phase is observed, and never carries a
- * percentage: the editor shows the real phase plus elapsed seconds. The client
- * falls back to discovery (`GET .../glue-jobs?active=1`) whenever the stream
- * cannot open or drops.
+ * stream closes on a terminal phase or when its request budget expires. The
+ * client falls back to discovery (`GET .../glue-jobs?active=1`) whenever the
+ * stream cannot open or drops.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { signal } = request;
+  const { promise: stopped, resolve: stop } = Promise.withResolvers<null>();
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let finished = false;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    clearTimeout(deadlineTimer);
+    clearTimeout(pollTimer);
+    signal.removeEventListener("abort", finish);
+    stop(null);
+    streamController?.close();
   }
 
-  const { id } = await params;
-  const userId = Number(session.user.id);
+  // Start before authentication and the first read so either can spend the budget.
+  const deadlineTimer = setTimeout(finish, STREAM_BUDGET_MS);
+  signal.addEventListener("abort", finish);
+  if (signal.aborted) finish();
 
-  const initial = await glueJobStreamSnapshot(id, userId);
-  if (initial === null) {
-    return NextResponse.json(
-      { code: "GLUE_NOT_FOUND", message: "AI transition not found.", jobId: id },
-      { status: 404 }
-    );
+  const prepare = async () => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    if (finished) return null;
+
+    const userId = Number(session.user.id);
+    const readSnapshot = () => glueJobStreamSnapshot(id, userId);
+    const initial = await readSnapshot();
+    if (initial === null) {
+      return NextResponse.json(
+        { code: "GLUE_NOT_FOUND", message: "AI transition not found.", jobId: id },
+        { status: 404 }
+      );
+    }
+    return { initial, readSnapshot };
+  };
+
+  const prepared = finished
+    ? null
+    : await Promise.race([prepare(), stopped]).catch((error) => {
+        finish();
+        throw error;
+      });
+  if (finished || prepared === null) {
+    // No snapshot was available before disconnect or expiry. EOF lets the
+    // existing EventSource watcher run discovery and reconnect.
+    return new Response(null, { headers: sseHeaders() });
+  }
+  if (prepared instanceof Response) {
+    finish();
+    return prepared;
   }
 
+  const { initial, readSnapshot } = prepared;
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        try {
-          controller.close();
-        } catch {
-          // Already closed by the runtime/abort path.
-        }
-      };
-      const onAbort = () => finish();
-      request.signal.addEventListener("abort", onAbort);
+    start(controller) {
+      streamController = controller;
 
       const emit = (snapshot: GlueJobStatus) => {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`)
         );
-      };
-
-      try {
-        let snapshot: GlueJobStatus | null = initial;
-        while (!finished) {
-          emit(snapshot);
-          if (isGlueJobTerminalPhase(snapshot.phase)) {
-            finish();
-            break;
-          }
-          const { promise, resolve } = Promise.withResolvers<void>();
-          setTimeout(resolve, POLL_INTERVAL_MS);
-          await promise;
-          if (finished) break;
-          const next = await glueJobStreamSnapshot(id, userId).catch(() => null);
+        if (isGlueJobTerminalPhase(snapshot.phase)) {
+          finish();
+          return;
+        }
+        pollTimer = setTimeout(async () => {
+          const next = await readSnapshot().catch(() => null);
+          if (finished) return;
           if (next === null) {
             // A deleted job (or a persistent read failure) ends the stream; the
             // client reconnects with discovery and shows the durable state.
             finish();
-            break;
+            return;
           }
-          snapshot = next;
-        }
-      } finally {
-        request.signal.removeEventListener("abort", onAbort);
-        finish();
-      }
+          emit(next);
+        }, POLL_INTERVAL_MS);
+      };
+
+      emit(initial);
     },
     cancel() {
-      // The consumer went away; the loop's next iteration observes the aborted
-      // signal and stops.
+      streamController = undefined;
+      finish();
     },
   });
 
