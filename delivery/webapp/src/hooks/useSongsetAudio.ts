@@ -142,7 +142,7 @@ export function useSongsetAudio(
   useEffect(() => {
     const present = new Set(
       items
-        .map((item) => item.glueTakeId)
+        .flatMap((item) => [item.glueTakeId, item.intro?.id, item.outro?.id])
         .filter((takeId): takeId is string => typeof takeId === "string"),
     );
     // eslint-disable-next-line react-hooks/set-state-in-effect -- forgets failures for takes the items no longer reference
@@ -153,11 +153,13 @@ export function useSongsetAudio(
   }, [items]);
   const effectiveItems = useMemo(
     () =>
-      items.map((item) =>
-        item.glueTakeId && failedGlueTakeIds.has(item.glueTakeId)
-          ? { ...item, glueTakeId: null, glueSeconds: null }
-          : item,
-      ),
+      items.map((item) => ({
+        ...item,
+        ...(item.glueTakeId && failedGlueTakeIds.has(item.glueTakeId)
+          ? { glueTakeId: null, glueSeconds: null } : {}),
+        ...(item.intro && failedGlueTakeIds.has(item.intro.id) ? { intro: undefined } : {}),
+        ...(item.outro && failedGlueTakeIds.has(item.outro.id) ? { outro: undefined } : {}),
+      })),
     [items, failedGlueTakeIds],
   );
 

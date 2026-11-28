@@ -32,7 +32,7 @@ FontFamily = Literal[
 _DEFAULT_FADE_ALPHA_STEPS = 16
 _DEFAULT_MAX_CACHE_ENTRIES = 200
 _DEFAULT_CACHE_ENABLED = True
-_DEFAULT_TEMPO_BPM = 70.0
+DEFAULT_TEMPO_BPM = 70.0
 _BLANK_PREVIEW_ALPHA = 128
 _BLANK_PREVIEW_FADE_SECONDS = 0.5
 _BLANK_PREVIOUS_HOLD_SECONDS = 2.0
@@ -631,7 +631,7 @@ class FrameRenderer:
         if next_index < 0:
             return 0
 
-        bpm = tempo_bpm if tempo_bpm and tempo_bpm > 0 else _DEFAULT_TEMPO_BPM
+        bpm = tempo_bpm if tempo_bpm and tempo_bpm > 0 else DEFAULT_TEMPO_BPM
         four_beat_window_seconds = 4 * 60 / bpm
         preview_start = song_lyrics[next_index].global_time_seconds - four_beat_window_seconds
         if current_time < preview_start:
@@ -846,6 +846,25 @@ class FrameRenderer:
         frame_bytes = img.tobytes()
         img.close()
         return frame_bytes
+
+    def render_held_lyric(self, segment: SegmentInfo, line: GlobalLRCLine | None) -> bytes:
+        if line is None:
+            return self.render_frame_bytes([], [], 0)
+        state = VisualState(
+            segment_id=segment.id,
+            current_title=segment.song_title,
+            current_segment=segment,
+            current_song_lyrics=[line],
+            current_lyric_index=0,
+            intro_alpha=0,
+            fade_alpha=255,
+            preview_alpha=0,
+            tempo_bpm=segment.tempo_bpm,
+            is_last_lyric_faded=False,
+            current_time=line.global_time_seconds,
+        )
+        with self._render_frame_impl(state) as image:
+            return image.tobytes()
 
     def _render_frame_impl(self, state: VisualState) -> Image.Image:
         width, height = self.resolution

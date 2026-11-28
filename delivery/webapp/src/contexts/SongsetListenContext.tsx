@@ -34,6 +34,7 @@ import {
   type ArrangementTimeline,
 } from "@/lib/arrangements";
 import { validateSongsetAudioSources } from "@/lib/audio/songset-audio";
+import type { ResolvedSongsetBoundary } from "@/lib/glue/resolve";
 
 export interface SongsetListenRequest {
   songsetId: string;
@@ -45,6 +46,7 @@ export type SongsetListenLoadErrorKey = "notFound" | "build";
 
 interface ListenSongsetPayload {
   items?: ListenSongsetItemPayload[];
+  boundaries?: ResolvedSongsetBoundary[];
   deletedItemCount?: number;
 }
 
@@ -84,6 +86,7 @@ export function SongsetListenProvider({
   const [loadState, setLoadState] = useState<SongsetListenLoadState>("loading");
   const [loadErrorKey, setLoadErrorKey] = useState<SongsetListenLoadErrorKey | null>(null);
   const [payloadItems, setPayloadItems] = useState<ListenSongsetItemPayload[]>([]);
+  const [boundaries, setBoundaries] = useState<ResolvedSongsetBoundary[]>([]);
   const [deletedItemCount, setDeletedItemCount] = useState(0);
   const [previewErrorKind, setPreviewErrorKind] = useState<SongsetAudioErrorKind | null>(null);
 
@@ -92,7 +95,7 @@ export function SongsetListenProvider({
   const generationRef = useRef(0);
   const autoplayGenerationRef = useRef(-1);
 
-  const items = useMemo(() => toListenTimelineSources(payloadItems), [payloadItems]);
+  const items = useMemo(() => toListenTimelineSources(payloadItems, boundaries), [payloadItems, boundaries]);
   const validation = useMemo(() => validateSongsetAudioSources(items), [items]);
   const active = enabled && request !== null;
 
@@ -113,6 +116,7 @@ export function SongsetListenProvider({
     audio.stop();
     setRequest(null);
     setPayloadItems([]);
+    setBoundaries([]);
     setDeletedItemCount(0);
     setLoadErrorKey(null);
     setPreviewErrorKind(null);
@@ -131,6 +135,7 @@ export function SongsetListenProvider({
       generationRef.current += 1;
       setRequest({ ...next, token: generationRef.current });
       setPayloadItems([]);
+      setBoundaries([]);
       setDeletedItemCount(0);
       setLoadErrorKey(null);
       setPreviewErrorKind(null);
@@ -180,6 +185,7 @@ export function SongsetListenProvider({
         const payload = (await response.json()) as ListenSongsetPayload;
         if (cancelled || generation !== generationRef.current) return;
         setPayloadItems(payload.items ?? []);
+        setBoundaries(payload.boundaries ?? []);
         setDeletedItemCount(payload.deletedItemCount ?? 0);
         setLoadState("ready");
       } catch {

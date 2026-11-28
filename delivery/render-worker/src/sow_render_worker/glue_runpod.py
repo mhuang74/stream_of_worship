@@ -202,7 +202,7 @@ def _supported_window(
     """
     for beats in (16, 8, 4, 2):
         fill = milliseconds_to_frames(
-            generation_duration_ms(beats, descriptor["toTempoBpm"])
+            generation_duration_ms(beats, descriptor["toTempoBpm"], boundary="target" in descriptor)
         )
         try:
             window = latent_window(a_frames, fill, b_frames)
@@ -224,12 +224,20 @@ def _unsupported_detail(supported: int | None) -> str:
 
 def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, time_left=None):
     time_left = time_left or (lambda: preparation_time(lambda_context))
-    a_pcm, b_pcm = (
-        sf.read(excerpt.wav_path, dtype="int16", always_2d=True)[0] for excerpt in (a, b)
-    )
     descriptor = inputs.descriptor
+    # The two seconds of silence provide the outer observation for the gap
+    # mask. They are discarded along with the retained side when staging.
+    a_pcm, b_pcm = (
+        sf.read(excerpt.wav_path, dtype="int16", always_2d=True)[0]
+        if excerpt else np.zeros(
+            (descriptor["simdps"]["outerContextSeconds"] * SAMPLE_RATE, 2), dtype=np.int16
+        )
+        for excerpt in (a, b)
+    )
     fill = milliseconds_to_frames(
-        generation_duration_ms(descriptor["beats"], descriptor["toTempoBpm"])
+        generation_duration_ms(
+            descriptor["beats"], descriptor["toTempoBpm"], boundary="target" in descriptor
+        )
     )
     gates: set[str] = set()
     window: tuple[int, int] | None
@@ -244,6 +252,7 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, ti
             return None, _unsupported_detail(None)
 
     prefix = inputs.to_item["recording_hash_prefix"]
+    guide_side = {"side": "A"} if descriptor.get("target") == "outro" else {}
     stem = download_catalog_audio(
         r2,
         f"{prefix}/stems/instrumental.flac",
@@ -255,7 +264,7 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, ti
     if stem is not None:
         try:
             guide = build_guide(
-                stem, inputs.to_steps, work_dir, timeout=time_left()
+                stem, inputs.to_steps, work_dir, timeout=time_left(), **guide_side
             )
         except GlueExcerptTooShort:
             pass
@@ -267,7 +276,7 @@ def prepare_audio(job, inputs, a, b, r2, work_dir, assets, lambda_context, *, ti
             raise GlueAudioUnavailable("Incoming recording is unavailable", side="B")
         try:
             guide = build_guide(
-                Path(mix), inputs.to_steps, work_dir, timeout=time_left()
+                Path(mix), inputs.to_steps, work_dir, timeout=time_left(), **guide_side
             )
         except GlueExcerptTooShort:
             guide = None

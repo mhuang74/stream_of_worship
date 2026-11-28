@@ -123,6 +123,7 @@ function mockCreateTransaction(rows: unknown[][] = [[]]) {
     const chain = {
       from: vi.fn().mockReturnThis(),
       leftJoin: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       orderBy: vi.fn().mockImplementation(async () => rows[call++] ?? []),
     };

@@ -31,11 +31,14 @@ import {
   type GlueQuota,
 } from "@/lib/glue/quota";
 import {
-  deriveGlueJunction,
+  deriveGlueTarget,
+  getGlueTargetItems,
   loadGlueItemRows,
   type GlueJunctionReady,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
+import type { GlueTarget, SongsetBoundary } from "./boundary-types";
+import { updateSongsetBoundary } from "./boundaries";
 import { loadResolvedGlueJunctions } from "@/lib/glue/resolve";
 import { selectGlueTake } from "@/lib/db/songsets";
 
@@ -76,6 +79,7 @@ export function isGlueJobTerminalPhase(phase: string): boolean {
 
 /** The wire shape shared by `client.ts`, every route, and the editor. */
 export interface GlueJobStatus {
+  target?: SongsetBoundary;
   id: string;
   songsetId: string;
   fromItemId: string;
@@ -101,9 +105,12 @@ export interface GlueJobStatus {
 export interface ActiveGlueJobsPayload {
   active: GlueJobStatus[];
   latestByFromItemId: Record<string, GlueJobStatus>;
+  latestByBoundary?: Partial<Record<SongsetBoundary, GlueJobStatus>>;
 }
 
-export type GlueJobRecord = typeof glueJobs.$inferSelect;
+type GlueJobBoundaryColumns = "target" | "boundaryItemId" | "boundaryRevision";
+export type GlueJobRecord = Omit<typeof glueJobs.$inferSelect, GlueJobBoundaryColumns> &
+  Partial<Pick<typeof glueJobs.$inferSelect, GlueJobBoundaryColumns>>;
 
 function iso(value: Date | string | null): string | null {
   if (value === null) return null;
@@ -127,8 +134,9 @@ export function toGlueJobStatus(
   return {
     id: row.id,
     songsetId: row.songsetId,
-    fromItemId: row.fromItemId,
-    toItemId: row.toItemId,
+    ...(row.target && row.target !== "junction" ? { target: row.target } : {}),
+    fromItemId: row.fromItemId ?? row.boundaryItemId ?? "",
+    toItemId: row.toItemId ?? row.boundaryItemId ?? "",
     descriptorKey: row.descriptorKey,
     phase: row.phase,
     active: row.active,
@@ -211,9 +219,13 @@ export function buildActiveGlueJobsPayload(
   now: Date = new Date()
 ): ActiveGlueJobsPayload {
   const latestByFromItemId: Record<string, GlueJobStatus> = {};
+  const latestByBoundary: Partial<Record<SongsetBoundary, GlueJobStatus>> = {};
   for (const row of rows) {
-    if (latestByFromItemId[row.fromItemId] !== undefined) continue;
-    latestByFromItemId[row.fromItemId] = toGlueJobStatus(row, quota, now);
+    if (row.target && row.target !== "junction") {
+      latestByBoundary[row.target] ??= toGlueJobStatus(row, quota, now);
+    } else if (row.fromItemId) {
+      latestByFromItemId[row.fromItemId] ??= toGlueJobStatus(row, quota, now);
+    }
   }
   const active = rows
     .filter((row) => row.active)
@@ -223,7 +235,7 @@ export function buildActiveGlueJobsPayload(
       logTerminalGlueJob(row, now);
     }
   }
-  return { active, latestByFromItemId };
+  return { active, latestByFromItemId, ...(Object.keys(latestByBoundary).length ? { latestByBoundary } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +250,7 @@ export type CreateJobAtomicResult =
   | { kind: "inputs-changed" };
 
 export interface CreateJobAtomicInput {
+  target?: GlueTarget;
   userId: number;
   songsetId: string;
   fromItemId: string;
@@ -534,6 +547,7 @@ export const glueJobRepository: GlueJobRepository = {
               itemId: songsetItems.id,
               position: songsetItems.position,
               userId: songsets.userId,
+              boundarySettings: songsets.boundarySettings,
               glueEnabled: songsetItems.glueEnabled,
               glueBeats: songsetItems.glueBeats,
               glueActiveTakeId: songsetItems.glueActiveTakeId,
@@ -561,20 +575,21 @@ export const glueJobRepository: GlueJobRepository = {
             .orderBy(asc(songsetItems.position));
           const items = snapshotRows
             .filter((row) => row.recordingDeletedAt === null)
-            .map((row) => buildResolverItem(row));
-          const index = items.findIndex((item) => item.itemId === input.fromItemId);
-          if (index < 0 || items[index + 1]?.itemId !== input.toItemId) {
+            .map((row) => ({ ...buildResolverItem(row), boundarySettings: row.boundarySettings }));
+          const target = input.target ?? "junction";
+          const inputs = getGlueTargetItems(items, target, input.fromItemId);
+          if (!inputs?.to || inputs.to.itemId !== input.toItemId) {
             return { kind: "inputs-changed" } as const;
           }
-          const from = items[index];
-          const to = items[index + 1];
+          const { from, to } = inputs;
           if (
+            (target !== "junction" && !from.glueEnabled) ||
             from.updatedAt !== input.expectedFromUpdatedAt.toISOString() ||
-            to.updatedAt !== input.expectedToUpdatedAt.toISOString()
+            to!.updatedAt !== input.expectedToUpdatedAt.toISOString()
           ) {
             return { kind: "inputs-changed" } as const;
           }
-          const derivation = deriveGlueJunction(from, to);
+          const derivation = deriveGlueTarget(target, from, to);
           if (
             !derivation.ok ||
             derivation.descriptorKey !== input.descriptorKey ||
@@ -612,8 +627,11 @@ export const glueJobRepository: GlueJobRepository = {
               id: input.jobId,
               userId: input.userId,
               songsetId: input.songsetId,
-              fromItemId: input.fromItemId,
-              toItemId: input.toItemId,
+              fromItemId: target === "junction" ? input.fromItemId : null,
+              toItemId: target === "junction" ? input.toItemId : null,
+              target,
+              boundaryItemId: target === "junction" ? null : input.fromItemId,
+              boundaryRevision: target === "junction" ? null : from.boundarySettings?.[target]?.revision,
               clientRequestId: input.clientRequestId,
               takeMode: input.takeMode,
               descriptorKey: input.descriptorKey,
@@ -659,12 +677,12 @@ export const glueJobRepository: GlueJobRepository = {
       }
       if (classification === "active-job") {
         const [active] = await db
-          .select({ id: glueJobs.id, fromItemId: glueJobs.fromItemId })
+          .select({ id: glueJobs.id, fromItemId: glueJobs.fromItemId, boundaryItemId: glueJobs.boundaryItemId })
           .from(glueJobs)
           .where(and(eq(glueJobs.userId, input.userId), eq(glueJobs.active, true)))
           .limit(1);
         if (active) {
-          return { kind: "active-job", jobId: active.id, fromItemId: active.fromItemId };
+          return { kind: "active-job", jobId: active.id, fromItemId: active.fromItemId ?? active.boundaryItemId ?? "" };
         }
       }
       throw error;
@@ -935,7 +953,8 @@ export interface GlueJobDeps {
   loadItems: typeof loadGlueItemRows;
   loadJunctions: typeof loadResolvedGlueJunctions;
   selectTake: typeof selectGlueTake;
-  isConfigured: typeof isElevenLabsConfigured;
+  selectBoundaryTake: typeof updateSongsetBoundary;
+  isConfigured: (target?: GlueTarget) => boolean;
   dispatch: GlueDispatch;
   readQuota: typeof readGlueQuota;
   now: () => Date;
@@ -949,7 +968,10 @@ export function createGlueJobDeps(overrides: Partial<GlueJobDeps> = {}): GlueJob
     loadItems: loadGlueItemRows,
     loadJunctions: loadResolvedGlueJunctions,
     selectTake: selectGlueTake,
-    isConfigured: isElevenLabsConfigured,
+    selectBoundaryTake: updateSongsetBoundary,
+    isConfigured: (target) =>
+      (target !== undefined && target !== "junction" && process.env.SOW_GLUE_PROVIDER === "cascade") ||
+      isElevenLabsConfigured(),
     dispatch: dispatchGlueMessage,
     readQuota: readGlueQuota,
     now: () => new Date(),
@@ -960,6 +982,8 @@ export function createGlueJobDeps(overrides: Partial<GlueJobDeps> = {}): GlueJob
 }
 
 export interface CreateGlueJobInput {
+  target?: GlueTarget;
+  expectedDescriptorKey?: string;
   songsetId: string;
   userId: number;
   fromItemId: string;
@@ -976,7 +1000,8 @@ export type CreateGlueJobOutcome =
 const MAX_GENERATION_SECONDS = 120;
 const MIN_EXCERPT_SECONDS = 1;
 
-function requireJunctionForCreate(
+function requireGlueTargetForCreate(
+  target: GlueTarget,
   from: GlueResolverItem,
   to: GlueResolverItem | null
 ): GlueJunctionReady {
@@ -989,7 +1014,7 @@ function requireJunctionForCreate(
   if (!from.glueEnabled) {
     throw new GlueJobRequestError("GLUE_NOT_READY", "AI transition is not enabled.");
   }
-  const derivation = deriveGlueJunction(from, to);
+  const derivation = deriveGlueTarget(target, from, to);
   if (!derivation.ok) {
     throw new GlueJobRequestError(
       "GLUE_NOT_READY",
@@ -1035,14 +1060,14 @@ export async function createGlueJob(
   }
 
   const items = (await deps.loadItems([input.songsetId], input.userId)).get(input.songsetId) ?? [];
-  const index = items.findIndex((item) => item.itemId === input.fromItemId);
-  if (index < 0) {
+  const target = input.target ?? "junction";
+  const inputs = getGlueTargetItems(items, target, input.fromItemId);
+  if (!inputs) {
     throw new GlueJobRequestError("GLUE_NOT_FOUND", "Songset item not found.");
   }
-  const from = items[index];
-  const to = items[index + 1] ?? null;
+  const { from, to } = inputs;
   // Step 2: saved-input validation, in the contract's order.
-  const derivation = requireJunctionForCreate(from, to);
+  const derivation = requireGlueTargetForCreate(target, from, to);
   if (to === null) {
     // Unreachable (requireJunctionForCreate throws), but keeps `to` narrowed.
     throw new GlueJobRequestError("GLUE_NOT_READY", "No successor.");
@@ -1059,7 +1084,8 @@ export async function createGlueJob(
   // Step 3: the client's snapshot must still be the persisted one.
   if (
     from.updatedAt !== input.expectedFromUpdatedAt ||
-    to.updatedAt !== input.expectedToUpdatedAt
+    to.updatedAt !== input.expectedToUpdatedAt ||
+    (target !== "junction" && input.expectedDescriptorKey !== derivation.descriptorKey)
   ) {
     throw new GlueJobRequestError(
       "GLUE_STALE_SNAPSHOT",
@@ -1069,8 +1095,9 @@ export async function createGlueJob(
 
   // Step 5: free resolution for `initial` — no quota, no job.
   if (input.takeMode === "initial") {
-    const junctions = await deps.loadJunctions(input.songsetId, input.userId);
-    const junction = junctions.find((entry) => entry.fromItemId === input.fromItemId);
+    const junction = target === "junction"
+      ? (await deps.loadJunctions(input.songsetId, input.userId)).find((entry) => entry.fromItemId === input.fromItemId)
+      : undefined;
     if (junction?.state === "ready" && junction.selectedTake !== null) {
       return { kind: "ready", takeId: junction.selectedTake.id, cached: true };
     }
@@ -1079,12 +1106,11 @@ export async function createGlueJob(
       derivation.descriptorKey
     );
     if (newestTakeId !== null) {
-      const selected = await deps.selectTake(
-        input.fromItemId,
-        input.songsetId,
-        input.userId,
-        newestTakeId
-      );
+      const selected = target === "junction"
+        ? await deps.selectTake(input.fromItemId, input.songsetId, input.userId, newestTakeId)
+        : (await deps.selectBoundaryTake(
+            input.songsetId, input.userId, target, { takeId: newestTakeId }, derivation.descriptorKey
+          )) === "saved";
       if (selected) {
         logGlueEvent("glue.take.selected", {
           glueJobId: null,
@@ -1099,7 +1125,7 @@ export async function createGlueJob(
   }
 
   // Step 6: provider configuration is checked before reserving quota.
-  if (!deps.isConfigured()) {
+  if (!deps.isConfigured(target)) {
     throw new GlueJobRequestError(
       "GLUE_NOT_CONFIGURED",
       "AI transitions are not configured on this server."
@@ -1110,6 +1136,7 @@ export async function createGlueJob(
   const now = deps.now();
   const jobId = deps.randomId();
   const result = await deps.repository.createJobAtomically({
+    ...(target === "junction" ? {} : { target }),
     userId: input.userId,
     songsetId: input.songsetId,
     fromItemId: input.fromItemId,
@@ -1400,14 +1427,15 @@ export async function resumeGlueJob(
   // the definitely-unsent post-contact case (persisted uploads are reused by
   // descriptor, so a changed Song would silently attach the wrong take).
   const items = (await deps.loadItems([current.songsetId], args.userId)).get(current.songsetId) ?? [];
-  const index = items.findIndex((item) => item.itemId === current.fromItemId);
-  const from = index >= 0 ? items[index] : null;
-  const to = index >= 0 ? items[index + 1] ?? null : null;
+  const target = current.target ?? "junction";
+  const inputs = getGlueTargetItems(items, target, current.fromItemId ?? current.boundaryItemId ?? undefined);
   if (
-    from === null ||
-    to === null ||
-    from.updatedAt !== current.expectedFromUpdatedAt.toISOString() ||
-    to.updatedAt !== current.expectedToUpdatedAt.toISOString()
+    !inputs?.to ||
+    (target !== "junction" && !inputs.from.glueEnabled) ||
+    (target !== "junction" &&
+      (inputs.from.boundarySettings?.[target]?.revision ?? null) !== (current.boundaryRevision ?? null)) ||
+    inputs.from.updatedAt !== current.expectedFromUpdatedAt.toISOString() ||
+    inputs.to.updatedAt !== current.expectedToUpdatedAt.toISOString()
   ) {
     throw new GlueJobRequestError(
       "GLUE_INPUTS_CHANGED",
@@ -1415,7 +1443,7 @@ export async function resumeGlueJob(
       { jobId: args.jobId }
     );
   }
-  const derivation = deriveGlueJunction(from, to);
+  const derivation = deriveGlueTarget(target, inputs.from, inputs.to);
   if (!derivation.ok || derivation.descriptorKey !== current.descriptorKey) {
     throw new GlueJobRequestError(
       "GLUE_INPUTS_CHANGED",

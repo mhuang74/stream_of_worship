@@ -21,6 +21,7 @@ import {
   type ArrangementTimeline,
   type ArrangementTimelineItem,
   type TimelineItemSource,
+  type TimelineGlueWindow,
 } from "@/lib/arrangements";
 import { getAudioContext } from "@/lib/audio/audio-context";
 import {
@@ -69,6 +70,7 @@ export function glueAudioUrl(takeId: string): string {
 }
 
 export interface SongsetAudioSessionOptions {
+  endAtSeconds?: number;
   audioUrlFor?: (hashPrefix: string) => string;
   glueAudioUrlFor?: (takeId: string) => string;
   createAudioContext?: () => AudioContext;
@@ -209,7 +211,7 @@ export function createSongsetAudioSession(
   options: SongsetAudioSessionOptions = {},
 ): SongsetAudioSession {
   const timeline = buildArrangementTimeline(items);
-  const totalSeconds = timeline.totalSeconds;
+  const totalSeconds = Math.min(timeline.totalSeconds, options.endAtSeconds ?? Infinity);
   const itemCount = timeline.items.length;
   const audioUrlFor = options.audioUrlFor ?? recordingAudioUrl;
   const glueUrlFor = options.glueAudioUrlFor ?? glueAudioUrl;
@@ -434,8 +436,8 @@ export function createSongsetAudioSession(
     // The Glue plays on a neutral gain: its 20 ms fades and gain staging were
     // baked into the staged WAV, so no extra envelope is applied. A seek that
     // lands inside the window keeps the correct buffer offset.
-    const glueWindow = item.glueWindowBefore;
-    if (glueWindow !== null && glueWindow.endSeconds > atSeconds) {
+    for (const glueWindow of [item.glueWindowBefore, item.glueWindowAfter]) {
+      if (!glueWindow || glueWindow.endSeconds <= atSeconds) continue;
       const glueBuffer = preparedGlue.get(glueWindow.takeId);
       if (glueBuffer) {
         const glueGain = ctx.createGain();
@@ -445,7 +447,7 @@ export function createSongsetAudioSession(
         source.buffer = glueBuffer;
         source.connect(glueGain);
         const windowStart = Math.max(atSeconds, glueWindow.startSeconds);
-        const duration = glueWindow.endSeconds - windowStart;
+        const duration = Math.min(glueWindow.endSeconds, totalSeconds) - windowStart;
         if (duration > 0) {
           source.start(
             originContextTime +
@@ -467,7 +469,7 @@ export function createSongsetAudioSession(
       const stored = storedClips[clipIndex];
       if (!clip || !stored) continue;
       if (clip.endSeconds <= atSeconds) continue;
-      const duration = clip.endSeconds - Math.max(atSeconds, clip.startSeconds);
+      const duration = Math.min(clip.endSeconds, totalSeconds) - Math.max(atSeconds, clip.startSeconds);
       if (duration <= 0) continue;
 
       const source = ctx.createBufferSource();
@@ -494,7 +496,7 @@ export function createSongsetAudioSession(
     for (let index = 0; index < itemCount; index++) {
       const item = timeline.items[index]!;
       const itemEnd = item.startSeconds + item.durationSeconds;
-      const glueEnd = item.glueWindowBefore?.endSeconds ?? itemEnd;
+      const glueEnd = item.glueWindowAfter?.endSeconds ?? item.glueWindowBefore?.endSeconds ?? itemEnd;
       if (Math.max(itemEnd, glueEnd) <= atSeconds) continue;
       if (!prepared.has(index)) continue;
       scheduleItem(index, atSeconds, originContextTime, ctx);
@@ -507,7 +509,7 @@ export function createSongsetAudioSession(
     const item = timeline.items[index];
     if (!item) return;
     const atSeconds = clockPosition();
-    if (item.startSeconds + item.durationSeconds <= atSeconds) return;
+    if ((item.glueWindowAfter?.endSeconds ?? item.startSeconds + item.durationSeconds) <= atSeconds) return;
     const ctx = getContext();
     scheduleItem(index, atSeconds, ctx.currentTime, ctx);
   }
@@ -651,7 +653,9 @@ export function createSongsetAudioSession(
       prepared.set(index, storedClips);
       // The Glue belongs to the incoming item's junction, so it is decoded
       // before the item becomes playable. Failure stays local.
-      await prepareGlueFor(index);
+      for (const window of [item.glueWindowBefore, item.glueWindowAfter]) {
+        if (window) await prepareGlueFor(index, window);
+      }
 
       const readyProgress = getProgress();
       if (readyProgress !== null) {
@@ -674,10 +678,8 @@ export function createSongsetAudioSession(
    * junction without a server-resolved ready take, so an unfinished take is
    * never scheduled.
    */
-  function prepareGlueFor(index: number): Promise<void> {
+  function prepareGlueFor(index: number, window: TimelineGlueWindow): Promise<void> {
     const item = timeline.items[index];
-    const window = item?.glueWindowBefore ?? null;
-    if (!window) return Promise.resolve();
     const takeId = window.takeId;
     if (preparedGlue.has(takeId) || failedGlueTakes.has(takeId)) {
       return Promise.resolve();
@@ -685,7 +687,7 @@ export function createSongsetAudioSession(
     const inFlight = glueInFlight.get(takeId);
     if (inFlight) return inFlight;
 
-    const fromItemId = timeline.items[index - 1]?.itemId ?? null;
+    const fromItemId = window.target === "outro" ? item.itemId : timeline.items[index - 1]?.itemId ?? null;
     const toItemId = item!.itemId;
     const promise = (async () => {
       try {

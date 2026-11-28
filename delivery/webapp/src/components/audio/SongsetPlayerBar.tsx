@@ -399,13 +399,12 @@ export function SongsetPlayerBar() {
                   segment; its seconds are already inside the shifted item
                   starts, so it overlays the boundary. */}
               {totalSeconds > 0 &&
-                timeline.items.map((item) => {
-                  const glue = item.glueWindowBefore;
-                  if (glue === null) return null;
+                timeline.items.flatMap((item) => [item.glueWindowBefore, item.glueWindowAfter]).map((glue) => {
+                  if (!glue) return null;
                   const width = glue.endSeconds - glue.startSeconds;
                   return (
                     <div
-                      key={`glue-${glue.takeId}`}
+                      key={`glue-${glue.takeId}-${glue.startSeconds}`}
                       data-testid="songset-seek-glue"
                       data-take-id={glue.takeId}
                       aria-hidden="true"
@@ -437,24 +436,25 @@ export function SongsetPlayerBar() {
             layer whose buttons keep their own tab stop. */}
         {totalSeconds > 0 && (
           <div className="pointer-events-none absolute inset-x-3 top-2 h-2 lg:top-3">
-            {timeline.items.map((item, index) => {
-              const glue = item.glueWindowBefore;
-              if (glue === null) return null;
+            {timeline.items.flatMap((item, index) => [
+              { glue: item.glueWindowBefore, index }, { glue: item.glueWindowAfter, index },
+            ]).map(({ glue, index }) => {
+              if (!glue) return null;
               const fromTitle =
                 (index > 0 ? items[index - 1]?.song?.title : null) ??
                 t("songsets.listen.untitled");
               const toTitle =
                 items[index]?.song?.title ?? t("songsets.listen.untitled");
-              const tempoBpm = items[index - 1]?.recording?.tempoBpm ?? null;
-              const leadIn = contextSecondsForTempo(tempoBpm);
+              const tempoBpm = items[glue.target === "outro" ? index : index - 1]?.recording?.tempoBpm ?? null;
+              const leadIn = glue.target === "outro" ? 240 / (tempoBpm || 70) : contextSecondsForTempo(tempoBpm);
               const width = glue.endSeconds - glue.startSeconds;
               return (
                 <button
-                  key={`glue-preview-${glue.takeId}`}
+                  key={`glue-preview-${glue.takeId}-${glue.startSeconds}`}
                   type="button"
                   data-testid="songset-glue-preview"
                   data-take-id={glue.takeId}
-                  aria-label={t("songsets.listen.glueSegmentAria")
+                  aria-label={glue.target ? t(`glue.boundary.${glue.target}`) : t("songsets.listen.glueSegmentAria")
                     .replace("{from}", fromTitle)
                     .replace("{to}", toTitle)}
                   // A 3-8 s transition is a few pixels wide, so the hit area is

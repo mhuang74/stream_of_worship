@@ -9,6 +9,9 @@ import type { GlueBeats } from "@/lib/glue/descriptor";
 import {
   computeGlueQuote,
   deriveGlueJunction,
+  deriveGlueTarget,
+  getGlueTargetItems,
+  isBoundaryEligible,
   loadExcerptKeySets,
   loadGlueItemRows,
   type GlueJunctionReady,
@@ -16,6 +19,7 @@ import {
   type GlueQuoteCore,
   type GlueResolverItem,
 } from "@/lib/glue/quote";
+import { defaultBoundarySettings, hasEnabledBoundary, songsetBoundaries, type GlueTarget, type SongsetBoundary, type SongsetBoundarySettings } from "./boundary-types";
 import { readGlueQuota, type GlueQuota } from "@/lib/glue/quota";
 import { describeGlueDescriptorDrift, type GlueStaleChangeDetail } from "@/lib/glue/stale";
 import type { SongsetItemDetail } from "@/lib/db/songsets";
@@ -82,6 +86,7 @@ export interface ResolvedGlueJunctionQuote {
 }
 
 export interface ResolvedGlueJunction {
+  target?: SongsetBoundary;
   fromItemId: string;
   toItemId: string | null;
   glueEnabled: boolean;
@@ -106,6 +111,13 @@ export interface ResolvedGlueJunction {
   unavailableReason: GlueUnavailableReason | null;
 }
 
+export interface ResolvedSongsetBoundary extends ResolvedGlueJunction {
+  target: SongsetBoundary;
+  eligible: boolean;
+  suspended: boolean;
+  previewBarSeconds: number | null;
+}
+
 /** Take row shape accepted by the pure resolver (spec §5.1). */
 export interface GlueTakeRow {
   id: string;
@@ -125,6 +137,7 @@ export interface GlueTakeRow {
 
 /** Job row shape accepted by the pure resolver (spec §5.1). */
 export interface GlueJobRow {
+  target?: GlueTarget;
   id: string;
   userId: number;
   fromItemId: string;
@@ -147,6 +160,7 @@ export interface GlueJobRow {
 }
 
 export interface ResolveGlueJunctionsArgs {
+  target?: SongsetBoundary;
   items: GlueResolverItem[];
   takes: GlueTakeRow[];
   jobs: GlueJobRow[];
@@ -319,10 +333,13 @@ function toJunctionQuote(
 export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGlueJunction[] {
   const { items, takes, jobs, quota, cachedExcerptKeys, rejectedExcerptKeys } = args;
   const anyActiveJob = jobs.some((job) => job.active);
+  const target = args.target ?? "junction";
+  const targetJobs = jobs.filter((job) => (job.target ?? "junction") === target);
 
   return items.map((item, index) => {
-    const to = index + 1 < items.length ? items[index + 1] : null;
+    const to = target === "junction" ? items[index + 1] ?? null : item;
     const base = {
+      ...(target === "junction" ? {} : { target }),
       fromItemId: item.itemId,
       toItemId: to?.itemId ?? null,
       glueEnabled: item.glueEnabled,
@@ -350,15 +367,20 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       };
     }
 
-    const derivation = deriveGlueJunction(item, to);
+    const derivation = deriveGlueTarget(target, item, to);
     const descriptorKey = derivation.ok ? derivation.descriptorKey : null;
-    const activeJobRow = activeJobFor(jobs, item.itemId);
+    const activeJobRow = activeJobFor(targetJobs, item.itemId);
     const activeJob = toActiveJob(activeJobRow);
-    const latestJob = latestJobFor(jobs, item.itemId);
+    const latestJob = latestJobFor(targetJobs, item.itemId);
+    const previousSelection = target !== "junction" && descriptorKey
+      ? item.boundarySettings?.[target]?.selections?.[descriptorKey]
+      : undefined;
+    const selectedId = previousSelection ?? item.glueActiveTakeId;
     const selectedRow =
-      item.glueActiveTakeId === null
+      selectedId === null
         ? null
-        : takes.find((take) => take.id === item.glueActiveTakeId) ?? null;
+        : takes.find((take) => take.id === selectedId &&
+            (target === "junction" || take.userId === item.userId)) ?? null;
     // The selected-take menu restores any ready take of this descriptor for
     // free, so the resolved payload carries the full list (oldest first).
     const availableTakes = derivation.ok
@@ -431,10 +453,10 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       state = "ready";
     } else if (selectedRow !== null) {
       state = "stale";
-      staleChange = describeGlueDescriptorDrift(
+      staleChange = target === "junction" ? describeGlueDescriptorDrift(
         selectedRow.descriptorJson,
         derivation.descriptorJson
-      );
+      ) : null;
       staleTake = toResolvedTake(selectedRow);
     } else if (
       latestJob !== null &&
@@ -459,6 +481,58 @@ export function resolveGlueJunctions(args: ResolveGlueJunctionsArgs): ResolvedGl
       activeJob,
       quote: toJunctionQuote(derivation, cachedExcerptKeys, rejectedExcerptKeys),
       unavailableReason,
+    };
+  });
+}
+
+export function resolveSongsetBoundaries(
+  args: ResolveGlueJunctionsArgs,
+  settings?: SongsetBoundarySettings
+): ResolvedSongsetBoundary[] {
+  if (settings === undefined) settings = args.items[0]?.boundarySettings;
+  return songsetBoundaries.map((target) => {
+    const inputs = getGlueTargetItems(args.items, target);
+    const eligible = Boolean(inputs && isBoundaryEligible(inputs.from));
+    const config = settings?.[target] ?? defaultBoundarySettings;
+    const bpm = inputs?.from.recording?.tempoBpm;
+    const resolved = eligible && inputs
+      ? resolveGlueJunctions({
+          ...args, target,
+          items: [{
+            ...inputs.from,
+            boundarySettings: settings,
+            glueEnabled: config.enabled,
+            glueBeats: config.beats,
+            glueActiveTakeId: config.takeId,
+          }],
+        })[0]
+      : {
+          fromItemId: inputs?.from.itemId ?? "",
+          toItemId: inputs?.to?.itemId ?? null,
+          glueEnabled: config.enabled,
+          glueBeats: config.beats,
+          descriptorKey: null,
+          state: "disabled" as const,
+          selectedTake: null,
+          staleChange: null,
+          staleTake: null,
+          availableTakes: [],
+          activeJob: null,
+          quote: null,
+          quotaLimit: args.quota.limit,
+          quotaUsed: args.quota.used,
+          quotaRemaining: args.quota.remaining,
+          quotaResetAt: args.quota.resetAt,
+          expectedFromUpdatedAt: inputs?.from.updatedAt ?? null,
+          expectedToUpdatedAt: inputs?.to?.updatedAt ?? null,
+          unavailableReason: null,
+        };
+    return {
+      ...resolved,
+      target,
+      eligible,
+      suspended: !eligible && config.enabled,
+      previewBarSeconds: eligible && bpm && bpm > 0 ? 240 / bpm : null,
     };
   });
 }
@@ -499,12 +573,13 @@ export function takeRowFromDb(row: typeof glueTakes.$inferSelect): GlueTakeRow {
   };
 }
 
-function jobRowFromDb(row: typeof glueJobs.$inferSelect): GlueJobRow {
+export function jobRowFromDb(row: typeof glueJobs.$inferSelect): GlueJobRow {
   return {
     id: row.id,
     userId: row.userId,
-    fromItemId: row.fromItemId,
-    toItemId: row.toItemId,
+    target: row.target,
+    fromItemId: row.fromItemId ?? row.boundaryItemId ?? "",
+    toItemId: row.toItemId ?? row.boundaryItemId ?? "",
     takeMode: row.takeMode,
     descriptorKey: row.descriptorKey,
     phase: row.phase,
@@ -530,7 +605,8 @@ function jobRowFromDb(row: typeof glueJobs.$inferSelect): GlueJobRow {
  */
 async function loadResolvedGlueJunctionsForSongsets(
   songsetIds: readonly string[],
-  userId: number
+  userId: number,
+  includeBoundaries = false
 ): Promise<Map<string, ResolvedGlueJunction[]>> {
   const resolved = new Map<string, ResolvedGlueJunction[]>();
   if (songsetIds.length === 0) return resolved;
@@ -546,6 +622,15 @@ async function loadResolvedGlueJunctionsForSongsets(
     for (let index = 0; index + 1 < items.length; index += 1) {
       const derivation = deriveGlueJunction(items[index], items[index + 1]);
       if (derivation.ok) descriptorKeys.add(derivation.descriptorKey);
+    }
+    if (!includeBoundaries) continue;
+    for (const target of songsetBoundaries) {
+      const inputs = getGlueTargetItems(items, target);
+      if (!inputs?.from.glueEnabled) continue;
+      const derivation = deriveGlueTarget(target, inputs.from, inputs.to);
+      if (!derivation.ok) continue;
+      descriptorKeys.add(derivation.descriptorKey);
+      if (inputs.from.glueActiveTakeId) activeTakeIds.push(inputs.from.glueActiveTakeId);
     }
   }
   const activeTakeClause =
@@ -592,17 +677,19 @@ async function loadResolvedGlueJunctionsForSongsets(
   const { cached, rejected } = await loadExcerptKeySets(userId, contentHashes);
 
   for (const [songsetId, items] of itemsBySongset) {
-    resolved.set(
-      songsetId,
-      resolveGlueJunctions({
+    const args = {
         items,
         takes,
         jobs: jobs.filter((job) => items.some((item) => item.itemId === job.fromItemId)),
         quota,
         cachedExcerptKeys: cached,
         rejectedExcerptKeys: rejected,
-      })
-    );
+    };
+    resolved.set(songsetId, [
+      ...resolveGlueJunctions(args),
+      ...(includeBoundaries && hasEnabledBoundary(items[0]?.boundarySettings)
+        ? resolveSongsetBoundaries(args) : []),
+    ]);
   }
   return resolved;
 }
@@ -621,11 +708,13 @@ export async function loadResolvedGlueJunctionsForList(
   songsetIds: readonly string[],
   userId: number
 ): Promise<Map<string, Map<string, ResolvedGlueJunction>>> {
-  const resolved = await loadResolvedGlueJunctionsForSongsets(songsetIds, userId);
+  const resolved = await loadResolvedGlueJunctionsForSongsets(songsetIds, userId, true);
   return new Map(
     [...resolved.entries()].map(([songsetId, junctions]) => [
       songsetId,
-      new Map(junctions.map((junction) => [junction.fromItemId, junction] as const)),
+      new Map(junctions.map((junction) => [
+        junction.target ? `songset:${junction.target}` : junction.fromItemId, junction
+      ] as const)),
     ])
   );
 }

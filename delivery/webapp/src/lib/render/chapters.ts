@@ -55,8 +55,14 @@ export interface ChaptersManifest {
    * timeline built from the Song Arrangement (see chapter-sections.ts).
    */
   titleCardOffsetSeconds?: number;
+  songsetOffsetSeconds?: number;
+  transitionWindows?: RenderedTransitionWindow[];
 }
 
+export interface RenderedTransitionWindow {
+  startSeconds: number;
+  endSeconds: number;
+}
 export interface ChapterGenerationOptions {
   includeEmptyChapters?: boolean;
 }
@@ -382,5 +388,12 @@ export function normalizeChaptersManifest(data: unknown): ChaptersManifest {
       (raw.titleCardOffsetSeconds as number) ??
       (raw.title_card_offset_seconds as number) ??
       0,
+    ...(typeof raw.songsetOffsetSeconds === "number" ? { songsetOffsetSeconds: raw.songsetOffsetSeconds } : {}),
+    ...(Array.isArray(raw.transitionWindows) ? {
+      transitionWindows: raw.transitionWindows.filter((window): window is RenderedTransitionWindow =>
+        window && typeof window.startSeconds === "number" && typeof window.endSeconds === "number" &&
+        window.startSeconds >= 0 && window.endSeconds > window.startSeconds
+      ),
+    } : {}),
   };
 }

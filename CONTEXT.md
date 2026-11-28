@@ -77,7 +77,16 @@ One immutable generated-and-staged audio result for a Glue Descriptor, carrying 
 _Avoid_: generation, version, attempt (a job may fail before producing a take)
 
 **Glue Job**:
-One confirmed request to generate a Glue Take for a saved Junction. A Glue Job has one quota reservation, one seed, and at most one resulting Glue Take.
+One confirmed request to generate a Glue Take for a saved Junction, Songset Intro, or Songset Outro. A Glue Job has one quota reservation, one seed, and at most one resulting Glue Take.
+
+**Songset Intro**:
+An optional generated instrumental immediately before the first Song Arrangement in a Songset. The Songset owns the setting and suspends it when its first item has no valid saved arrangement.
+
+**Songset Outro**:
+An optional generated instrumental immediately after the last Song Arrangement in a Songset. The Songset owns the setting and suspends it when its last item has no valid saved arrangement.
+
+**First Lyrics Hold**:
+The first arranged Song's opening lyric screen displayed from the start of the Songset Intro or a four-beat silent lead-in until the first sung line. It belongs to lyrics-video presentation.
 
 **Provider Attempt**:
 One service's work toward completing a Glue Job. A Glue Job may have several Provider Attempts and publishes the result of its first verified success.

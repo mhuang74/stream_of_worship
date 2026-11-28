@@ -5,6 +5,7 @@
 // `@/lib/db/...` import (or Drizzle/server code) into the client bundle.
 
 import type { RecordingSection, TimelineClip, TimelineItemSource } from "@/lib/arrangements";
+import type { ResolvedSongsetBoundary } from "@/lib/glue/resolve";
 import {
   linesForSourceRange,
   lyricBoundaryToleranceSeconds,
@@ -36,8 +37,11 @@ export interface ListenSongsetItemPayload {
 
 export function toListenTimelineSources(
   items: ListenSongsetItemPayload[],
+  boundaries?: readonly ResolvedSongsetBoundary[],
 ): TimelineItemSource[] {
-  return items.map((item) => ({
+  const intro = boundaries?.find((boundary) => boundary.target === "intro")?.selectedTake;
+  const outro = boundaries?.find((boundary) => boundary.target === "outro")?.selectedTake;
+  return items.map((item, index) => ({
     itemId: item.id,
     recordingHashPrefix: item.recordingHashPrefix,
     arrangementSteps: item.arrangementSteps,
@@ -50,6 +54,8 @@ export function toListenTimelineSources(
     glueSeconds: item.glueSeconds ?? null,
     recordingSections: item.recording?.sections ?? null,
     recordingBeats: item.recording?.beats ?? null,
+    ...(index === 0 && intro ? { intro: { id: intro.id, seconds: intro.seconds } } : {}),
+    ...(index === items.length - 1 && outro ? { outro: { id: outro.id, seconds: outro.seconds } } : {}),
   }));
 }
 

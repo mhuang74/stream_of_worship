@@ -174,11 +174,12 @@ def delivery(monkeypatch, tmp_path):
 
     def stage_factory(**callbacks):
         def stage(*args, work_dir, **kwargs):
-            callbacks["authorize"]("upload-a")
-            submissions.append(("elevenlabs", now))
-            travel(5)
-            callbacks["authorize"]("upload-b")
-            travel(5)
+            sides = [side for side in ("a", "b") if kwargs[f"{side}_excerpt"]]
+            for index, side in enumerate(sides):
+                callbacks["authorize"](f"upload-{side}")
+                if index == 0:
+                    submissions.append(("elevenlabs", now))
+                travel(5)
             callbacks["authorize"]("compose")
             path = work_dir / "raw.pcm"
             path.write_bytes(b"elevenlabs pcm")
@@ -208,8 +209,10 @@ def delivery(monkeypatch, tmp_path):
         cascade.Cascade,
         "_excerpts",
         lambda *args, **kwargs: [
-            SimpleNamespace(rejection_code="copyright" if state.skip else None, seconds=6),
-            SimpleNamespace(rejection_code=None, seconds=6),
+            SimpleNamespace(rejection_code="copyright" if state.skip else None, seconds=6)
+            if getattr(job, "target", "junction") != "intro" else None,
+            SimpleNamespace(rejection_code=None, seconds=6)
+            if getattr(job, "target", "junction") != "outro" else None,
         ],
     )
     monkeypatch.setattr(cascade.db, "record_provider_contact", first_contact)
@@ -275,6 +278,16 @@ def test_runpod_success_stops_before_modal_and_elevenlabs(delivery):
     assert route["provider"] == "cascade"
     assert route["simdps_seconds"] == 300
     assert "elevenlabs" not in route["attempts"]
+
+
+@pytest.mark.parametrize(("target", "reference"), [("intro", "b"), ("outro", "a")])
+def test_boundary_uses_gpu_failover_then_one_elevenlabs_reference(delivery, monkeypatch, target, reference):
+    monkeypatch.setenv("SOW_GLUE_SIMDPS_SECONDS", "12")
+    delivery.job.target = target
+    assert delivery.deliver() == "elevenlabs"
+    assert [name for name, _ in delivery.submissions] == ["runpod", "modal", "elevenlabs"]
+    operations = delivery.saved.route["attempts"]["elevenlabs"]["operations"]
+    assert list(operations) == [f"upload-{reference}", "compose"]
 
 
 def test_fresh_cascade_route_uses_simdps_policy(delivery):

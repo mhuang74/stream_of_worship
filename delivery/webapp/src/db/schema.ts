@@ -15,9 +15,11 @@ import {
   vector,
   customType,
   jsonb,
+  check,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import type { GlueTarget, SongsetBoundarySettings } from "@/lib/glue/boundary-types";
 
 const tsvector = customType<{ data: string; driverData: string }>({
   dataType() {
@@ -189,6 +191,8 @@ export const songsets = pgTable("songsets", {
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
+  boundarySettings: jsonb("boundary_settings").$type<SongsetBoundarySettings>().default({}).notNull(),
+  boundaryUpdatedAt: timestamp("boundary_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 
@@ -278,6 +282,7 @@ export const renderJobs = pgTable("render_jobs", {
   fontSizePreset: text("font_size_preset").notNull().default("M"),
   fontFamily: text("font_family").notNull().default("noto_serif_tc"),
   includeTitleCard: boolean("include_title_card").notNull().default(false),
+  firstLyricsHold: boolean("first_lyrics_hold").notNull().default(false),
   titleCardDurationSeconds: real("title_card_duration_seconds").default(10),
   titleCardLines: text("title_card_lines"),
 
@@ -355,11 +360,12 @@ export const glueJobs = pgTable(
       .notNull()
       .references(() => songsets.id, { onDelete: "cascade" }),
     fromItemId: text("from_item_id")
-      .notNull()
       .references(() => songsetItems.id, { onDelete: "cascade" }),
     toItemId: text("to_item_id")
-      .notNull()
       .references(() => songsetItems.id, { onDelete: "cascade" }),
+    target: text("target").$type<GlueTarget>().notNull().default("junction"),
+    boundaryItemId: text("boundary_item_id"),
+    boundaryRevision: text("boundary_revision"),
     clientRequestId: uuid("client_request_id").notNull(),
     takeMode: text("take_mode").notNull(),
     descriptorKey: text("descriptor_key").notNull(),
@@ -403,6 +409,10 @@ export const glueJobs = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (t) => [
+    check("glue_jobs_target_items_check", sql`
+      (${t.target} = 'junction' AND ${t.fromItemId} IS NOT NULL AND ${t.toItemId} IS NOT NULL AND ${t.boundaryItemId} IS NULL)
+      OR (${t.target} IN ('intro', 'outro') AND ${t.boundaryItemId} IS NOT NULL AND ${t.fromItemId} IS NULL AND ${t.toItemId} IS NULL)
+    `),
     unique().on(t.userId, t.clientRequestId),
     index("idx_glue_jobs_user_active_created").on(t.userId, t.active, t.createdAt.desc()),
     index("idx_glue_jobs_phase_heartbeat").on(t.phase, t.heartbeatAt),

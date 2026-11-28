@@ -231,13 +231,13 @@ def build_excerpt(
     return target, seconds, hashlib.sha256(wav_bytes).hexdigest()
 
 
-def build_guide(source: Path, steps, work_dir: Path, *, timeout: float) -> np.ndarray:
+def build_guide(source: Path, steps, work_dir: Path, *, timeout: float, side="B") -> np.ndarray:
     decoded = _decode_to_float32(source, work_dir, timeout=timeout)
     try:
         with sf.SoundFile(decoded) as audio:
             windows = _plan_windows(
                 _validated_steps(steps) if steps is not None else None,
-                frames=len(audio), side="B", target_seconds=18,
+                frames=len(audio), side=side, target_seconds=18,
             )
             return _read_windows(audio, windows)
     finally:

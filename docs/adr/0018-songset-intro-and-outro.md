@@ -1,0 +1,3 @@
+# Songsets own their Intro and Outro
+
+Intro and Outro settings follow the Songset so reordering can suspend them or restore a take when its saved arrangement returns. Each direction conditions generation on one real arranged edge. SimDPS gets synthetic outer context for its sampling window, and ElevenLabs gets a single retained reference. Both stage the generated interval so the recorded songs and their chapter boundaries remain intact. [SimDPS sampler](https://raw.githubusercontent.com/s-turland/SimDPSInpainting/f5175f14b3be67e28ffc7c95874265a0390a9ada/simdps/inpainter.py) · [ElevenLabs song extension](https://elevenlabs.io/docs/eleven-api/guides/how-to/music/inpainting#extend-a-song)

@@ -182,6 +182,9 @@ class Cascade:
     def _excerpts(self, inputs, *, gpu_audio=False):
         excerpts = []
         for side in ("A", "B"):
+            if side not in spine.reference_sides(self.job):
+                excerpts.append(None)
+                continue
             self._preparation_time()
             excerpt = spine._prepare_side(
                 self.conn,
@@ -236,7 +239,7 @@ class Cascade:
             self.route["deadline_epoch"] - self.route["elevenlabs_seconds"]
         )
         excerpts = self._excerpts(inputs)
-        if any(excerpt.rejection_code for excerpt in excerpts):
+        if any(excerpt and excerpt.rejection_code for excerpt in excerpts):
             self.route["elevenlabs_skip"] = GLUE_COPYRIGHT_REJECTED
             self.log("glue.provider.fallback", provider=backend, reason="cached-copyright")
             return
@@ -245,8 +248,8 @@ class Cascade:
             "model": "music_v2_5",
             "result_key": f"glues/{self.job.user_id}/jobs/{self.job.id}/elevenlabs.pcm",
             "operations": {},
-            "a_seconds": excerpts[0].seconds,
-            "b_seconds": excerpts[1].seconds,
+            "a_seconds": excerpts[0].seconds if excerpts[0] else 0,
+            "b_seconds": excerpts[1].seconds if excerpts[1] else 0,
         }
 
         def authorize(operation):
@@ -273,7 +276,7 @@ class Cascade:
                     self.job.to_item_id: inputs.to_item,
                 },
                 reference=ReferenceAudio(
-                    a_seconds=excerpts[0].seconds, b_seconds=excerpts[1].seconds
+                    a_seconds=attempt["a_seconds"], b_seconds=attempt["b_seconds"]
                 ),
             )
             if not self.store.put_if_absent(attempt["result_key"], path):

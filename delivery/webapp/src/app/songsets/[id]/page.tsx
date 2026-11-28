@@ -25,8 +25,10 @@ export default async function SongsetEditorPage({
   return (
     <SongsetEditorClient
       songsetId={id}
+      enableSongsetBoundaries={process.env.SOW_SONGSET_BOUNDARIES_ENABLED === "1"}
       initialData={{
         id: songset.id,
+        boundaries: songset.boundaries,
         name: songset.name,
         description: songset.description,
         createdAt: songset.createdAt.toISOString(),

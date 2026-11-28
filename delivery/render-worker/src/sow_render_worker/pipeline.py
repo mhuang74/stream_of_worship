@@ -21,7 +21,7 @@ from sow_render_worker.audio_engine import (
     calculate_total_duration,
     generate_songset_audio,
 )
-from sow_render_worker.chapters import chapter_titles, generate_chapters_manifest
+from sow_render_worker.chapters import TransitionWindow, chapter_titles, generate_chapters_manifest
 from sow_render_worker.db import (
     GlueTake,
     RenderJob,
@@ -36,7 +36,7 @@ from sow_render_worker.db import (
     start_render_job,
     update_render_progress,
 )
-from sow_render_worker.frame_renderer import has_lyric_content
+from sow_render_worker.frame_renderer import DEFAULT_TEMPO_BPM, has_lyric_content
 from sow_render_worker.lrc_parser import parse_lrc, remap_lrc_to_clips
 from sow_render_worker.uploader import R2Uploader, RenderArtifacts
 from sow_render_worker.video_engine import (
@@ -287,6 +287,23 @@ def _title_card_lead_in_resolver(
     return resolve
 
 
+def arranged_opening_timing(
+    job: RenderJob, first: SongsetItem, intro: GlueClip | None
+) -> tuple[float | None, float]:
+    """Return the first visual hold start and the song's silent count-in."""
+    if not (job.video_enabled and first.arrangement_steps and (job.first_lyrics_hold or intro)):
+        return None, 0.0
+    hold_start = 0.0
+    if job.include_title_card:
+        hold_start = title_card_lead_in_seconds(
+            0, clamp_title_card_duration(
+                job.title_card_duration_seconds or DEFAULT_TITLE_CARD_DURATION_SECONDS
+            )
+        )
+    bpm = first.tempo_bpm if first.tempo_bpm and first.tempo_bpm > 0 else DEFAULT_TEMPO_BPM
+    return hold_start, 0.0 if intro else 240 / bpm
+
+
 GLUE_NOT_READY = "GLUE_NOT_READY"
 GLUE_STALE_SNAPSHOT = "GLUE_STALE_SNAPSHOT"
 
@@ -454,12 +471,13 @@ def load_render_glue_clips(
     seen_to_item_ids: set[str] = set()
 
     for position, entry in enumerate(transitions):
+        target = entry.get("target", "junction")
         from_item_id = entry.get("from_item_id")
         to_item_id = entry.get("to_item_id")
         take_id = entry.get("take_id")
         seconds = entry.get("seconds")
 
-        malformed = any(
+        malformed = target not in ("junction", "intro", "outro") or any(
             not isinstance(entry.get(field), str) or not entry[field]
             for field in _GLUE_SNAPSHOT_REQUIRED_FIELDS
         ) or (
@@ -478,16 +496,25 @@ def load_render_glue_clips(
 
         from_index = index_by_item_id.get(from_item_id)
         to_index = index_by_item_id.get(to_item_id)
-        if from_index is None or to_index is None or to_index != from_index + 1:
+        clip_key = to_item_id if target == "junction" else f"songset:{target}"
+        if target == "junction":
+            adjacent = from_index is not None and to_index == from_index + 1
+        else:
+            expected_index = 0 if target == "intro" else len(items) - 1
+            adjacent = from_index == to_index == expected_index and bool(
+                items[expected_index].arrangement_steps
+            )
+        if not adjacent:
             raise _glue_failure(
                 job.id,
                 code=GLUE_NOT_READY,
                 from_item_id=from_item_id,
                 to_item_id=to_item_id,
                 take_id=take_id,
-                detail="junction is not adjacent in this songset",
+                detail=("junction is not adjacent in this songset" if target == "junction"
+                        else "transition no longer matches the songset boundary"),
             )
-        if to_item_id in seen_to_item_ids:
+        if clip_key in seen_to_item_ids:
             raise _glue_failure(
                 job.id,
                 code=GLUE_NOT_READY,
@@ -496,7 +523,7 @@ def load_render_glue_clips(
                 take_id=take_id,
                 detail="junction is duplicated in the snapshot",
             )
-        seen_to_item_ids.add(to_item_id)
+        seen_to_item_ids.add(clip_key)
 
         _validate_snapshot_item_identity(
             job.id,
@@ -655,7 +682,7 @@ def load_render_glue_clips(
             seconds=float(take.seconds),
             checksum=expected_sha256 or "",
         )
-        clips[to_item_id] = clip
+        clips[clip_key] = clip
         _log_glue_render_event(
             "glue.render.glue.loaded",
             jobId=job.id,
@@ -771,7 +798,14 @@ def execute_render_pipeline(
         # duration admission or mixing so a broken Glue fails visibly here
         # instead of silently rendering an ordinary gap.
         glue_clips = load_render_glue_clips(conn, job, items, asset_fetcher)
+        intro = glue_clips.pop("songset:intro", None)
+        outro = glue_clips.pop("songset:outro", None)
         effective_glue_clips = glue_clips or None
+        hold_start, opening_silence = arranged_opening_timing(job, items[0], intro)
+        arranged_video_opening = hold_start is not None
+        card_lead_in = hold_start or 0.0
+        boundary_seconds = sum(clip.seconds for clip in (intro, outro) if clip)
+        additional_seconds = boundary_seconds + card_lead_in + opening_silence
 
         # Admission uses the arranged timeline (crossfade overlap shortens it),
         # matching both the mix and the webapp's own admission check. A layout
@@ -782,13 +816,14 @@ def execute_render_pipeline(
         )
         if total_duration <= 0:
             total_duration = sum(item.duration_seconds or 0 for item in items)
+        total_duration += additional_seconds
         if len(items) > MAX_SONGSET_ITEMS or total_duration > MAX_SONGSET_DURATION_SECONDS:
             raise ValueError(
                 f"Songset exceeds limit: {len(items)} songs / {total_duration:.0f}s "
                 f"(max {MAX_SONGSET_ITEMS} songs / {MAX_SONGSET_DURATION_SECONDS}s)"
             )
 
-        total_duration_seconds = sum(item.duration_seconds or 0 for item in items)
+        total_duration_seconds = total_duration
         if total_duration_seconds <= 0:
             total_duration_seconds = 180.0 * len(items)
             logger.warning(
@@ -838,11 +873,18 @@ def execute_render_pipeline(
             progress_callback=audio_progress_callback,
             job_id=job_id,
             lead_in_resolver=(
-                _title_card_lead_in_resolver(job, asset_fetcher)
+                (lambda _: card_lead_in) if arranged_video_opening
+                else _title_card_lead_in_resolver(job, asset_fetcher)
                 if job.video_enabled and job.include_title_card
                 else None
             ),
             glue_clips=effective_glue_clips,
+            **({
+                "intro": intro,
+                "outro": outro,
+                "first_lyrics_hold_start": card_lead_in if arranged_video_opening else None,
+                "opening_silence_seconds": opening_silence,
+            } if intro or outro or arranged_video_opening else {}),
         )
 
         if not Path(audio_output_path).exists():
@@ -974,6 +1016,10 @@ def execute_render_pipeline(
                 timeout_check_callback=check_lambda_timeout,
                 job_id=job_id,
                 glue_windows=audio_result.glue_windows,
+                **({
+                    "first_lyrics_hold_start": audio_result.first_lyrics_hold_start,
+                    "outro_start": audio_result.outro_start,
+                } if arranged_video_opening or outro else {}),
             )
 
             video_engine.frame_renderer.clear_cache()
@@ -993,6 +1039,14 @@ def execute_render_pipeline(
             asset_fetcher.download_lrc,
             audio_result.total_duration_seconds,
             offset_seconds=audio_result.lead_in_seconds,
+            songset_offset_seconds=audio_result.segments[0].start_time_seconds,
+            transition_windows=tuple(
+                ([TransitionWindow(card_lead_in, card_lead_in + intro.seconds, "intro")] if intro else [])
+                + [TransitionWindow(window.start_seconds, window.end_seconds, "junction")
+                   for window in audio_result.glue_windows]
+                + ([TransitionWindow(audio_result.outro_start, audio_result.total_duration_seconds, "outro")]
+                   if audio_result.outro_start is not None else [])
+            ),
         )
 
         check_lambda_timeout()

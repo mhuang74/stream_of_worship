@@ -180,6 +180,7 @@ export async function createRenderJob(
         fontSizePreset: input.fontSizePreset ?? "M",
         fontFamily: input.fontFamily ?? "noto_serif_tc",
         includeTitleCard: input.includeTitleCard ?? false,
+        ...(process.env.SOW_SONGSET_BOUNDARIES_ENABLED === "1" ? { firstLyricsHold: true } : {}),
         titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
         titleCardLines:
           input.titleCardLines && input.titleCardLines.length > 0

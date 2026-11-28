@@ -17,12 +17,16 @@ import {
   loadResolvedGlueJunctionsForList,
   glueTakeSelectionError,
   resolveGlueJunctions,
+  resolveSongsetBoundaries,
+  jobRowFromDb,
   takeRowFromDb,
-  type GlueJobRow,
   type GlueSelectionErrorCode,
   type GlueTakeRow,
   type ResolvedGlueJunction,
+  type ResolvedSongsetBoundary,
 } from "@/lib/glue/resolve";
+import { loadSongsetBoundaries } from "@/lib/glue/boundaries";
+import { hasEnabledBoundary, songsetBoundaries, withBoundaryDuration, type SongsetBoundary, type SongsetBoundarySettings } from "@/lib/glue/boundary-types";
 import { readGlueQuota } from "@/lib/glue/quota";
 import { logGlueEvent } from "@/lib/glue/log";
 import {
@@ -361,6 +365,7 @@ export interface SongsetItemDetail {
 }
 
 export interface SongsetDetail extends SongsetListItem {
+  boundarySettings?: SongsetBoundarySettings;
   items: SongsetItemDetail[];
   /** Items whose Recording is soft-deleted and therefore filtered from `items`. */
   deletedItemCount: number;
@@ -374,6 +379,7 @@ export interface SongsetEditorData extends SongsetDetail {
   latestRenderJobEstimatedTotalSeconds: number | null;
   /** One resolved outgoing Junction per item, in position order. */
   glue: ResolvedGlueJunction[];
+  boundaries?: ResolvedSongsetBoundary[];
 }
 
 export interface RenderJobSummary {
@@ -407,6 +413,8 @@ export interface RenderPageData {
     songs: { id: string; title: string }[];
     lastCompletedRenderJobId: string | null;
     durationSeconds: number | null;
+    arrangedOpening?: boolean;
+    openingSilenceSeconds?: number;
   };
   userSettings: {
     defaultVideoTemplate: string;
@@ -627,7 +635,9 @@ export function mapRenderStateFromSnapshot(input: {
   lastFailedRenderJobId: string | null;
   latestJobStatus: string | null;
   latestJobCompletedAt: Date | null;
+  latestJobCreatedAt?: Date | null;
   latestItemUpdatedAt?: Date | null;
+  boundaryUpdatedAt?: Date | null;
 }): RenderState {
   if (!input.latestRenderJobId || !input.latestJobStatus) return "unrendered";
   if (input.latestJobStatus === "queued" || input.latestJobStatus === "running") return "rendering";
@@ -638,11 +648,10 @@ export function mapRenderStateFromSnapshot(input: {
     return "failed";
   }
   if (input.latestJobStatus === "completed") {
-    if (
-      input.latestJobCompletedAt &&
-      input.latestItemUpdatedAt &&
-      input.latestItemUpdatedAt > input.latestJobCompletedAt
-    ) {
+    const { latestJobCompletedAt, latestJobCreatedAt, latestItemUpdatedAt, boundaryUpdatedAt } = input;
+    const boundaryCutoff = latestJobCreatedAt ?? latestJobCompletedAt;
+    if ((latestJobCompletedAt && latestItemUpdatedAt && latestItemUpdatedAt > latestJobCompletedAt) ||
+        (boundaryCutoff && boundaryUpdatedAt && boundaryUpdatedAt > boundaryCutoff)) {
       return "stale";
     }
     return "fresh";
@@ -738,6 +747,7 @@ export async function listSongsetSummaries(
         description: songsets.description,
         createdAt: songsets.createdAt,
         updatedAt: songsets.updatedAt,
+        boundaryUpdatedAt: songsets.boundaryUpdatedAt,
         latestRenderJobId: songsets.latestRenderJobId,
         lastFailedRenderJobId: songsets.lastFailedRenderJobId,
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
@@ -807,7 +817,9 @@ export async function listSongsetSummaries(
           lastFailedRenderJobId: row.lastFailedRenderJobId,
           latestJobStatus: row.latestJobStatus,
           latestJobCompletedAt: row.latestJobCompletedAt,
+          latestJobCreatedAt: row.latestJobCreatedAt,
           latestItemUpdatedAt: row.latestItemUpdatedAt,
+          boundaryUpdatedAt: row.boundaryUpdatedAt,
         });
         const failedAt = row.latestJobStartedAt ?? row.latestJobCreatedAt;
         return {
@@ -821,7 +833,7 @@ export async function listSongsetSummaries(
           lastCompletedRenderJobId: row.lastCompletedRenderJobId,
           itemCount: Number(row.itemCount ?? 0),
           durationSeconds: row.itemDurationInputs
-            ? getSongsetDurationSeconds(
+            ? withBoundaryDuration(getSongsetDurationSeconds(
                 row.itemDurationInputs.map((input) => {
                   const glue = glueBySongset.get(row.id)?.get(input.itemId);
                   return toArrangementInput({
@@ -835,7 +847,7 @@ export async function listSongsetSummaries(
                     glueSeconds: glue?.selectedTake?.seconds ?? null,
                   });
                 })
-              )
+              ), [...(glueBySongset.get(row.id)?.values() ?? [])].filter((glue) => glue.target))
             : null,
           renderState,
           renderErrorMessage:
@@ -861,6 +873,8 @@ export async function getSongsetEditorData(
         description: songsets.description,
         createdAt: songsets.createdAt,
         updatedAt: songsets.updatedAt,
+        boundarySettings: songsets.boundarySettings,
+        boundaryUpdatedAt: songsets.boundaryUpdatedAt,
         latestRenderJobId: songsets.latestRenderJobId,
         lastFailedRenderJobId: songsets.lastFailedRenderJobId,
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
@@ -959,7 +973,12 @@ export async function getSongsetEditorData(
       .orderBy(asc(songsetItems.position));
 
     const visibleItemRows = itemRows.filter((item) => !item.recordingDeletedAt);
-    const glueJunctions = await loadResolvedGlueJunctions(id, userId);
+    const [glueJunctions, boundaries] = await Promise.all([
+      loadResolvedGlueJunctions(id, userId),
+      row.boundarySettings
+        ? loadSongsetBoundaries(id, userId, row.boundarySettings)
+        : Promise.resolve([]),
+    ]);
     const glueByItemId = new Map(
       glueJunctions.map((junction) => [junction.fromItemId, junction] as const)
     );
@@ -1016,7 +1035,9 @@ export async function getSongsetEditorData(
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       latestJobStatus: row.latestJobStatus,
       latestJobCompletedAt: row.latestJobCompletedAt,
+      latestJobCreatedAt: row.latestJobCreatedAt,
       latestItemUpdatedAt,
+      boundaryUpdatedAt: row.boundaryUpdatedAt,
     });
     const failedAt = row.latestJobStartedAt ?? row.latestJobCreatedAt;
 
@@ -1031,7 +1052,7 @@ export async function getSongsetEditorData(
       lastCompletedRenderJobId: row.lastCompletedRenderJobId,
       itemCount: items.length,
       deletedItemCount: itemRows.length - visibleItemRows.length,
-      durationSeconds: getSongsetDurationSeconds(
+      durationSeconds: withBoundaryDuration(getSongsetDurationSeconds(
         items.map((item) =>
           toArrangementInput({
             arrangementSteps: item.arrangementSteps,
@@ -1044,7 +1065,7 @@ export async function getSongsetEditorData(
             glueSeconds: item.glueSeconds,
           })
         )
-      ),
+      ), boundaries),
       renderState,
       latestRenderJobEstimatedTotalSeconds: row.latestJobEstimatedTotalSeconds ?? null,
       renderErrorMessage:
@@ -1053,6 +1074,7 @@ export async function getSongsetEditorData(
       themes: collectThemes(items),
       items,
       glue: glueJunctions,
+      boundaries,
     };
   });
 }
@@ -1067,11 +1089,14 @@ export async function getRenderPageData(
         id: songsets.id,
         name: songsets.name,
         description: songsets.description,
+        boundarySettings: songsets.boundarySettings,
+        boundaryUpdatedAt: songsets.boundaryUpdatedAt,
         latestRenderJobId: songsets.latestRenderJobId,
         lastFailedRenderJobId: songsets.lastFailedRenderJobId,
         lastCompletedRenderJobId: songsets.lastCompletedRenderJobId,
         latestJobStatus: renderJobs.status,
         latestJobCompletedAt: renderJobs.completedAt,
+        latestJobCreatedAt: renderJobs.createdAt,
       })
       .from(songsets)
       .leftJoin(renderJobs, eq(renderJobs.id, songsets.latestRenderJobId))
@@ -1128,15 +1153,21 @@ export async function getRenderPageData(
       .orderBy(asc(songsetItems.position));
 
     const visibleItems = itemRows.filter((item) => !item.recordingDeletedAt);
-    const glueJunctions = await loadResolvedGlueJunctions(id, userId);
+    const [glueJunctions, boundaries] = await Promise.all([
+      loadResolvedGlueJunctions(id, userId),
+      hasEnabledBoundary(row.boundarySettings)
+        ? loadSongsetBoundaries(id, userId, row.boundarySettings)
+        : Promise.resolve([]),
+    ]);
+    const renderTransitions = [...glueJunctions, ...boundaries.filter((boundary) => boundary.eligible)];
     const glueByItemId = new Map(
       glueJunctions.map((junction) => [junction.fromItemId, junction] as const)
     );
-    const gluePreflight = glueJunctions.some(
+    const gluePreflight = renderTransitions.some(
       (junction) => junction.glueEnabled && junction.toItemId !== null
     )
       ? buildGlueRenderPreflight({
-          junctions: glueJunctions,
+          junctions: renderTransitions,
           items: visibleItems.map((item) => ({
             id: item.id,
             position: item.position,
@@ -1156,7 +1187,9 @@ export async function getRenderPageData(
       lastFailedRenderJobId: row.lastFailedRenderJobId,
       latestJobStatus: row.latestJobStatus,
       latestJobCompletedAt: row.latestJobCompletedAt,
+      latestJobCreatedAt: row.latestJobCreatedAt,
       latestItemUpdatedAt,
+      boundaryUpdatedAt: row.boundaryUpdatedAt,
     });
 
     const [settingsRow, latestJobRow, previousCompletedJobRow] = await Promise.all([
@@ -1193,7 +1226,8 @@ export async function getRenderPageData(
           title: item.songTitle ?? "Unknown Song",
         })),
         lastCompletedRenderJobId: row.lastCompletedRenderJobId,
-        durationSeconds: getSongsetDurationSeconds(
+        ...openingTiming(visibleItems[0], boundaries),
+        durationSeconds: withBoundaryDuration(getSongsetDurationSeconds(
           visibleItems.map((item) => {
             const glue = glueByItemId.get(item.id);
             return toArrangementInput({
@@ -1207,7 +1241,7 @@ export async function getRenderPageData(
               glueSeconds: glue?.selectedTake?.seconds ?? null,
             });
           })
-        ),
+        ), boundaries),
       },
       userSettings: settingsRow
         ? {
@@ -1248,6 +1282,7 @@ export async function computeRenderState(songsetId: string): Promise<RenderState
 
   if (job.status === "completed") {
     if (job.completedAt) {
+      if (songset.boundaryUpdatedAt && songset.boundaryUpdatedAt > (job.createdAt ?? job.completedAt)) return "stale";
       const newerItem = await db.query.songsetItems.findFirst({
         where: and(
           eq(songsetItems.songsetId, songsetId),
@@ -1298,7 +1333,12 @@ export async function getSongset(
   if (!row) return null;
 
   const sortedItems = [...row.items].sort((a, b) => a.position - b.position);
-  const glueJunctions = await loadResolvedGlueJunctions(id, userId);
+  const [glueJunctions, boundaries] = await Promise.all([
+    loadResolvedGlueJunctions(id, userId),
+    hasEnabledBoundary(row.boundarySettings)
+      ? loadSongsetBoundaries(id, userId, row.boundarySettings)
+      : Promise.resolve([]),
+  ]);
   const glueByItemId = new Map(
     glueJunctions.map((junction) => [junction.fromItemId, junction] as const)
   );
@@ -1313,6 +1353,7 @@ export async function getSongset(
     id: row.id,
     name: row.name,
     description: row.description,
+    boundarySettings: row.boundarySettings,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     latestRenderJobId: row.latestRenderJobId,
@@ -1321,7 +1362,7 @@ export async function getSongset(
     itemCount: items.length,
     deletedItemCount: sortedItems.length - items.length,
     durationSeconds:
-      getSongsetDurationSeconds(
+      withBoundaryDuration(getSongsetDurationSeconds(
         items.map((item) =>
           toArrangementInput({
             arrangementSteps: item.arrangementSteps,
@@ -1330,9 +1371,11 @@ export async function getSongset(
             crossfadeDurationSeconds: item.crossfadeDurationSeconds,
             tempoBpm: item.recording?.tempoBpm ?? null,
             durationSeconds: item.recording?.durationSeconds ?? null,
+            glueTakeId: item.glueTakeId,
+            glueSeconds: item.glueSeconds,
           })
         )
-      ) || null,
+      ), boundaries) || null,
     renderState,
     renderErrorMessage: null,
     failedAt: null,
@@ -2168,6 +2211,7 @@ export type SongsetRenderValidationCode =
  * from the resolved Junction; the client localizes it.
  */
 export interface GlueRenderPreflightGlue {
+  target?: SongsetBoundary;
   fromItemId: string;
   toItemId: string;
   fromTitle: string;
@@ -2191,6 +2235,7 @@ export interface GlueRenderPreflight {
  * (spec §5.5/C7). Field names and order are part of the worker contract.
  */
 export interface RenderGlueSnapshotEntry {
+  target?: SongsetBoundary;
   from_item_id: string;
   from_updated_at: string;
   to_item_id: string;
@@ -2214,6 +2259,7 @@ export interface GlueRenderItemIdentity {
 }
 
 export interface GlueRenderJobFact {
+  target?: SongsetBoundary;
   id: string;
   fromItemId: string;
   phase: string;
@@ -2266,9 +2312,10 @@ function latestGlueJobFacts(
 ): Map<string, GlueRenderJobFact> {
   const latest = new Map<string, GlueRenderJobFact>();
   for (const job of jobs) {
-    const previous = latest.get(job.fromItemId);
+    const key = job.target ?? job.fromItemId;
+    const previous = latest.get(key);
     if (!previous || job.createdAt.getTime() >= previous.createdAt.getTime()) {
-      latest.set(job.fromItemId, job);
+      latest.set(key, job);
     }
   }
   return latest;
@@ -2314,10 +2361,11 @@ function gluePreflightEntry(
   identities: ReadonlyMap<string, GlueRenderItemIdentity>,
   latestJobs: ReadonlyMap<string, GlueRenderJobFact>
 ): GlueRenderPreflightGlue {
-  const job = latestJobs.get(junction.fromItemId) ?? null;
+  const job = latestJobs.get(junction.target ?? junction.fromItemId) ?? null;
   const from = identities.get(junction.fromItemId);
   const to = junction.toItemId ? identities.get(junction.toItemId) : undefined;
   return {
+    ...(junction.target ? { target: junction.target } : {}),
     fromItemId: junction.fromItemId,
     toItemId: junction.toItemId ?? "",
     fromTitle: from?.title ?? "Unknown Song",
@@ -2351,7 +2399,7 @@ export function buildGlueRenderPreflight(args: {
       (junction) =>
         junction.glueEnabled &&
         junction.toItemId !== null &&
-        !(junction.state === "ready" && junction.selectedTake !== null)
+        !(junction.selectedTake !== null && (junction.target || junction.state === "ready"))
     )
     .sort(
       (a, b) =>
@@ -2423,6 +2471,8 @@ export async function loadGlueRenderJobFacts(
     .select({
       id: glueJobs.id,
       fromItemId: glueJobs.fromItemId,
+      target: glueJobs.target,
+      boundaryItemId: glueJobs.boundaryItemId,
       phase: glueJobs.phase,
       retryKind: glueJobs.retryKind,
       errorCode: glueJobs.errorCode,
@@ -2433,36 +2483,13 @@ export async function loadGlueRenderJobFacts(
     .orderBy(asc(glueJobs.createdAt));
   return rows.map((row) => ({
     id: row.id,
-    fromItemId: row.fromItemId,
+    ...(row.target && row.target !== "junction" ? { target: row.target } : {}),
+    fromItemId: row.fromItemId ?? row.boundaryItemId ?? "",
     phase: row.phase,
     retryKind: row.retryKind,
     errorCode: row.errorCode,
     createdAt: row.createdAt,
   }));
-}
-
-function glueJobRowForResolve(row: typeof glueJobs.$inferSelect): GlueJobRow {
-  return {
-    id: row.id,
-    userId: row.userId,
-    fromItemId: row.fromItemId,
-    toItemId: row.toItemId,
-    takeMode: row.takeMode,
-    descriptorKey: row.descriptorKey,
-    phase: row.phase,
-    active: row.active,
-    attemptId: row.attemptId,
-    providerContacted: row.providerContacted,
-    resultingTakeId: row.resultingTakeId,
-    activeTakeId: row.activeTakeId,
-    errorCode: row.errorCode,
-    errorDetail: row.errorDetail,
-    retryKind: row.retryKind,
-    createdAt: row.createdAt.toISOString(),
-    startedAt: row.startedAt ? row.startedAt.toISOString() : null,
-    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
-    heartbeatAt: row.heartbeatAt ? row.heartbeatAt.toISOString() : null,
-  };
 }
 
 export type GlueRenderTransaction = Parameters<
@@ -2486,6 +2513,7 @@ export async function createRenderGlueSnapshot(
       id: songsetItems.id,
       position: songsetItems.position,
       title: songs.title,
+      boundarySettings: songsets.boundarySettings,
       updatedAt: songsetItems.updatedAt,
       glueEnabled: songsetItems.glueEnabled,
       glueBeats: songsetItems.glueBeats,
@@ -2499,13 +2527,16 @@ export async function createRenderGlueSnapshot(
       recordingDeletedAt: recordings.deletedAt,
     })
     .from(songsetItems)
+    .innerJoin(songsets, eq(songsets.id, songsetItems.songsetId))
     .leftJoin(songs, eq(songsetItems.songId, songs.id))
     .leftJoin(recordings, eq(songsetItems.recordingHashPrefix, recordings.hashPrefix))
-    .where(eq(songsetItems.songsetId, songsetId))
+    .where(and(eq(songsetItems.songsetId, songsetId), eq(songsets.userId, userId)))
     .orderBy(asc(songsetItems.position));
 
   const visible = rows.filter((row) => !row.recordingDeletedAt);
-  if (!visible.some((row) => row.glueEnabled)) {
+  const settings = visible[0]?.boundarySettings;
+  const enabledBoundaries = hasEnabledBoundary(settings);
+  if (!visible.some((row) => row.glueEnabled) && !enabledBoundaries) {
     return { preflight: null, snapshot: [] };
   }
 
@@ -2513,6 +2544,7 @@ export async function createRenderGlueSnapshot(
     itemId: row.id,
     position: row.position,
     userId,
+    boundarySettings: settings,
     glueEnabled: row.glueEnabled,
     glueBeats: normalizeGlueBeats(row.glueBeats),
     glueActiveTakeId: row.glueActiveTakeId,
@@ -2533,6 +2565,12 @@ export async function createRenderGlueSnapshot(
   const selectedTakeIds = items
     .map((item) => item.glueActiveTakeId)
     .filter((takeId): takeId is string => takeId !== null);
+  for (const target of songsetBoundaries) {
+    const config = settings?.[target];
+    if (!config?.enabled) continue;
+    if (config.takeId) selectedTakeIds.push(config.takeId);
+    selectedTakeIds.push(...Object.values(config.selections ?? {}));
+  }
   const takeRows =
     selectedTakeIds.length > 0
       ? await tx.select().from(glueTakes).where(inArray(glueTakes.id, selectedTakeIds))
@@ -2545,15 +2583,21 @@ export async function createRenderGlueSnapshot(
 
   const quota = await readGlueQuota(userId);
   const takes = takeRows.map(takeRowFromDb);
-  const jobs = jobRows.map(glueJobRowForResolve);
-  const junctions = resolveGlueJunctions({
+  const jobs = jobRows.map(jobRowFromDb);
+  const resolverArgs = {
     items,
     takes,
     jobs,
     quota,
     cachedExcerptKeys: new Set<string>(),
     rejectedExcerptKeys: new Set<string>(),
-  });
+  };
+  const junctions = [
+    ...resolveGlueJunctions(resolverArgs),
+    ...(enabledBoundaries
+      ? resolveSongsetBoundaries(resolverArgs, settings).filter((boundary) => boundary.eligible)
+      : []),
+  ];
 
   const identities: GlueRenderItemIdentity[] = visible.map((row) => ({
     id: row.id,
@@ -2562,7 +2606,8 @@ export async function createRenderGlueSnapshot(
   }));
   const jobFacts: GlueRenderJobFact[] = jobRows.map((row) => ({
     id: row.id,
-    fromItemId: row.fromItemId,
+    ...(row.target && row.target !== "junction" ? { target: row.target } : {}),
+    fromItemId: row.fromItemId ?? row.boundaryItemId ?? "",
     phase: row.phase,
     retryKind: row.retryKind,
     errorCode: row.errorCode,
@@ -2584,7 +2629,7 @@ export async function createRenderGlueSnapshot(
     if (
       !junction.glueEnabled ||
       junction.toItemId === null ||
-      junction.state !== "ready" ||
+      (!junction.target && junction.state !== "ready") ||
       junction.selectedTake === null
     ) {
       continue;
@@ -2618,6 +2663,7 @@ export async function createRenderGlueSnapshot(
       };
     }
     snapshot.push({
+      ...(junction.target ? { target: junction.target } : {}),
       from_item_id: junction.fromItemId,
       from_updated_at: fromRow.updatedAt.toISOString(),
       to_item_id: junction.toItemId,
@@ -2797,6 +2843,22 @@ export interface SongsetRenderMetrics {
    * null when all relevant sources are unknown.
    */
   songsetDurationSeconds: number | null;
+  arrangedOpening?: boolean;
+  openingSilenceSeconds?: number;
+}
+
+function openingTiming(
+  first: { arrangementSteps: string | null; tempoBpm: number | null } | undefined,
+  boundaries: readonly ResolvedSongsetBoundary[]
+): { arrangedOpening?: boolean; openingSilenceSeconds?: number } {
+  const hasIntro = boundaries.some((boundary) => boundary.target === "intro" && boundary.selectedTake);
+  if (!first?.arrangementSteps || (!hasIntro && process.env.SOW_SONGSET_BOUNDARIES_ENABLED !== "1")) {
+    return {};
+  }
+  return {
+    arrangedOpening: true,
+    openingSilenceSeconds: hasIntro ? 0 : 240 / (first.tempoBpm && first.tempoBpm > 0 ? first.tempoBpm : 70),
+  };
 }
 
 /**
@@ -2848,12 +2910,16 @@ export async function getSongsetRenderMetrics(
   const glueJunctions = items.some((row) => row.glueEnabled)
     ? await loadResolvedGlueJunctions(songsetId, userId)
     : [];
-  if (glueJunctions.some((junction) => junction.glueEnabled && junction.toItemId !== null)) {
+  const boundaries = hasEnabledBoundary(songset.boundarySettings)
+    ? await loadSongsetBoundaries(songsetId, userId, songset.boundarySettings)
+    : [];
+  const renderTransitions = [...glueJunctions, ...boundaries.filter((boundary) => boundary.eligible)];
+  if (renderTransitions.some((junction) => junction.glueEnabled && junction.toItemId !== null)) {
     requireGlueRenderReady(
       songsetId,
       userId,
       buildGlueRenderPreflight({
-        junctions: glueJunctions,
+        junctions: renderTransitions,
         items: await loadGlueRenderItemIdentities(songsetId),
         jobs: await loadGlueRenderJobFacts(songsetId, userId),
       })
@@ -2866,7 +2932,8 @@ export async function getSongsetRenderMetrics(
   return {
     items: items.map((row) => ({ id: row.id })),
     songCount: items.length,
-    songsetDurationSeconds: getSongsetDurationSeconds(
+    ...openingTiming(items[0], boundaries),
+    songsetDurationSeconds: withBoundaryDuration(getSongsetDurationSeconds(
       items.map((row) => {
         const glue = glueByItemId.get(row.id);
         return toArrangementInput({
@@ -2875,7 +2942,7 @@ export async function getSongsetRenderMetrics(
           glueSeconds: glue?.selectedTake?.seconds ?? null,
         });
       })
-    ),
+    ), boundaries),
   };
 }
 
@@ -2891,7 +2958,10 @@ export async function duplicateSongset(
   const newId = nanoid();
   await db
     .insert(songsets)
-    .values({ id: newId, userId, name: newName, description: newDescription })
+    .values({
+      id: newId, userId, name: newName, description: newDescription,
+      ...(source.boundarySettings ? { boundarySettings: source.boundarySettings } : {}),
+    })
     .returning();
 
   if (source.items.length > 0) {

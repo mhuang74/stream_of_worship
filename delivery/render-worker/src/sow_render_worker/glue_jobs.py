@@ -33,7 +33,7 @@ from sow_render_worker.db import (
     refresh_glue_claim,
     set_glue_phase,
 )
-from sow_render_worker.glue_descriptor import build_descriptor
+from sow_render_worker.glue_descriptor import build_boundary_descriptor, build_descriptor
 from sow_render_worker.glue_detail import sanitize_detail
 from sow_render_worker.glue_excerpts import (
     GlueAudioUnavailable,
@@ -460,8 +460,46 @@ class _JunctionInputs:
     descriptor_key: str
 
 
+def _rebuild_boundary(items: list[dict[str, Any]], job: GlueJob) -> _JunctionInputs:
+    visible = [item for item in items if item.get("deleted_at") is None]
+    if not visible:
+        raise _StaleJunction("The Songset no longer has a boundary")
+    item = visible[0] if job.target == "intro" else visible[-1]
+    settings = (item.get("boundary_settings") or {}).get(job.target, {})
+    if (
+        item["id"] != job.from_item_id
+        or not _timestamps_match(job.expected_from_updated_at, item.get("updated_at"))
+        or not settings.get("enabled")
+        or settings.get("revision") != job.boundary_revision
+        or not item.get("recording_hash_prefix")
+        or not item.get("recording_content_hash")
+    ):
+        raise _StaleJunction("The saved Songset boundary changed")
+    try:
+        steps = canonical_steps_from_arrangement(
+            item.get("arrangement_steps"),
+            item.get("sections"),
+            item.get("beats"),
+            item.get("duration_seconds"),
+        )
+        tempo = item.get("tempo_bpm")
+        if not isinstance(tempo, (int, float)) or isinstance(tempo, bool) or tempo <= 0:
+            raise ValueError("Boundary BPM is unavailable")
+        descriptor, canonical, key = build_boundary_descriptor(
+            target=job.target,
+            beats=settings["beats"],
+            tempo_bpm=tempo,
+            recording={"contentHash": item["recording_content_hash"], "steps": steps},
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        raise _StaleJunction("The boundary arrangement or tempo changed") from exc
+    return _JunctionInputs(item, item, steps, steps, descriptor, canonical, key)
+
+
 def _rebuild_junction(items: list[dict[str, Any]], job: GlueJob) -> _JunctionInputs:
     """Recompute the descriptor from fresh item facts; raise when stale."""
+    if getattr(job, "target", "junction") != "junction":
+        return _rebuild_boundary(items, job)
     positions = {row["id"]: index for index, row in enumerate(items)}
     from_index = positions.get(job.from_item_id)
     to_index = positions.get(job.to_item_id)
@@ -783,6 +821,9 @@ def _run_generate_mode(
             }
             excerpts = []
             for side in ("A", "B"):
+                if side not in reference_sides(job):
+                    excerpts.append(None)
+                    continue
                 excerpt = _prepare_side(
                     conn, job, inputs, side=side, asset_fetcher=bounded_assets,
                     work_dir=work_dir, log=log, **local_options,
@@ -840,19 +881,17 @@ def _run_generate_mode(
             if callable(initializer):
                 initializer()
 
-        a_excerpt = _prepare_side(
-            conn, job, inputs, side="A", asset_fetcher=asset_fetcher,
-            work_dir=work_dir, log=log,
-        )
-        _heartbeat(conn, job, log, stage="excerpt-a")
-        b_excerpt = _prepare_side(
-            conn, job, inputs, side="B", asset_fetcher=asset_fetcher,
-            work_dir=work_dir, log=log,
-        )
-        _heartbeat(conn, job, log, stage="excerpt-b")
+        excerpts = {}
+        for side in reference_sides(job):
+            excerpts[side] = _prepare_side(
+                conn, job, inputs, side=side, asset_fetcher=asset_fetcher,
+                work_dir=work_dir, log=log,
+            )
+            _heartbeat(conn, job, log, stage=f"excerpt-{side.lower()}")
+        a_excerpt, b_excerpt = excerpts.get("A"), excerpts.get("B")
 
         pending_uploads = sum(
-            not excerpt.elevenlabs_song_id for excerpt in (a_excerpt, b_excerpt)
+            not excerpt.elevenlabs_song_id for excerpt in excerpts.values()
         )
         require_deadline(lambda_context, "upload", pending_uploads=pending_uploads)
         _heartbeat(conn, job, log, stage="deadline-gate")
@@ -917,6 +956,15 @@ def _run_generate_mode(
     finally:
         if work_dir is not None:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def reference_sides(job: GlueJob) -> tuple[str, ...]:
+    target = getattr(job, "target", "junction")
+    if target == "intro":
+        return ("B",)
+    if target == "outro":
+        return ("A",)
+    return ("A", "B")
 
 
 def _prepare_side(

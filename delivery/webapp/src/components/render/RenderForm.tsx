@@ -44,6 +44,7 @@ import type {
   GlueRenderPreflight,
   GlueRenderPreflightGlue,
 } from "@/lib/db/songsets"
+import { arrangedVideoLeadIn } from "@/lib/render/opening-timing"
 
 export interface RenderFormData {
   audioEnabled: boolean
@@ -69,6 +70,8 @@ interface RenderFormProps {
   previousRenderJob?: PreviousRenderJobData
   currentSongCount?: number
   currentSongsetDurationSeconds?: number | null
+  arrangedOpening?: boolean
+  openingSilenceSeconds?: number
   /** Blocking AI-transition preflight; non-null disables Start Render. */
   gluePreflight?: GlueRenderPreflight | null
   /** Re-resolve the page after a retry/disable action. */
@@ -158,6 +161,8 @@ export function RenderForm({
   previousRenderJob,
   currentSongCount,
   currentSongsetDurationSeconds,
+  arrangedOpening,
+  openingSilenceSeconds,
   gluePreflight = null,
   onGluePreflightChanged,
 }: RenderFormProps) {
@@ -194,12 +199,13 @@ export function RenderForm({
 
   const glueBlocked = (gluePreflight?.glues.length ?? 0) > 0
 
-  const editorHref = (fromItemId: string) =>
-    `/songsets/${songsetId}?glueItem=${encodeURIComponent(fromItemId)}`
+  const editorHref = (glue: GlueRenderPreflightGlue) => glue.target
+    ? `/songsets/${songsetId}#ai-transitions`
+    : `/songsets/${songsetId}?glueItem=${encodeURIComponent(glue.fromItemId)}`
 
   const retryGlue = async (glue: GlueRenderPreflightGlue) => {
     if (!glue.jobId) return
-    const key = `${glue.fromItemId}:${glue.toItemId}`
+    const key = glue.target ?? `${glue.fromItemId}:${glue.toItemId}`
     setGlueErrorKey(null)
     setBusyGlueKey(key)
     try {
@@ -218,16 +224,16 @@ export function RenderForm({
 
   const disableGlue = async (glue: GlueRenderPreflightGlue) => {
     setDisableTarget(null)
-    const key = `${glue.fromItemId}:${glue.toItemId}`
+    const key = glue.target ?? `${glue.fromItemId}:${glue.toItemId}`
     setGlueErrorKey(null)
     setBusyGlueKey(key)
     try {
-      // Only the affected Junction's item is switched off; every other
-      // Junction keeps its configuration.
-      const response = await fetch(`/api/songsets/${songsetId}/items`, {
+      const response = await fetch(`/api/songsets/${songsetId}${glue.target ? "" : "/items"}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: glue.fromItemId, glueEnabled: false }),
+        body: JSON.stringify(glue.target
+          ? { boundary: { target: glue.target, enabled: false } }
+          : { itemId: glue.fromItemId, glueEnabled: false }),
       })
       if (!response.ok) {
         setGlueErrorKey("render.gluePreflight.disableFailed")
@@ -278,7 +284,7 @@ export function RenderForm({
             <CardContent>
               <ul className="space-y-4">
                 {gluePreflight.glues.map((glue) => {
-                  const key = `${glue.fromItemId}:${glue.toItemId}`
+                  const key = glue.target ?? `${glue.fromItemId}:${glue.toItemId}`
                   const busy = busyGlueKey === key
                   const phaseLabel = glue.jobPhase
                     ? t(GLUE_PREFLIGHT_PHASE_KEYS[glue.jobPhase] ?? "glue.state.failed")
@@ -286,13 +292,15 @@ export function RenderForm({
                   return (
                     <li
                       key={key}
-                      data-testid={`render-glue-preflight-${glue.fromItemId}`}
+                      data-testid={`render-glue-preflight-${glue.target ?? glue.fromItemId}`}
                       className="space-y-2 rounded-lg border border-border/60 p-3"
                     >
                       <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                        <span>{glue.fromTitle}</span>
-                        <span aria-hidden="true">→</span>
-                        <span>{glue.toTitle}</span>
+                        {glue.target ? <span>{t(`glue.boundary.${glue.target}`)}</span> : <>
+                          <span>{glue.fromTitle}</span>
+                          <span aria-hidden="true">→</span>
+                          <span>{glue.toTitle}</span>
+                        </>}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {glue.reasonCode === "GLUE_STALE_SNAPSHOT" &&
@@ -330,14 +338,14 @@ export function RenderForm({
                           </button>
                         ) : (
                           <Link
-                            href={editorHref(glue.fromItemId)}
+                            href={editorHref(glue)}
                             className="font-medium text-primary underline-offset-4 hover:underline"
                           >
                             {t("render.gluePreflight.retryPaid")}
                           </Link>
                         )}
                         <Link
-                          href={editorHref(glue.fromItemId)}
+                          href={editorHref(glue)}
                           className="font-medium text-primary underline-offset-4 hover:underline"
                         >
                           {t("render.gluePreflight.openEditor")}
@@ -681,7 +689,9 @@ export function RenderForm({
                     const prevSongsetDuration = formatDurationSafe(previousRenderJob.songsetDurationSeconds)
                     const currSongsetDuration = formatDurationSafe(currentSongsetDurationSeconds)
                     const prevTotalDuration = formatDurationSafe(previousRenderJob.totalDurationSeconds)
-                    const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (formData.includeTitleCard ? (formData.titleCardDurationSeconds ?? TITLE_CARD_DURATION_DEFAULT) : 0)
+                    const estimatedTotalDuration = (currentSongsetDurationSeconds ?? 0) + (arrangedOpening
+                      ? arrangedVideoLeadIn({ arrangedOpening, openingSilenceSeconds }, formData)
+                      : formData.videoEnabled && formData.includeTitleCard ? formData.titleCardDurationSeconds : 0)
                     const currTotalDuration = estimatedTotalDuration > 0 ? `${t("render.compare.estimatedPrefix")}${formatDuration(estimatedTotalDuration)}` : "—"
 
                     const rows: { id: string; label: string; prev: string; curr: string; diff: boolean }[] = [

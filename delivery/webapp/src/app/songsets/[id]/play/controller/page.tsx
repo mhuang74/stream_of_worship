@@ -1,12 +1,12 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ControllerPlayer } from "@/components/play/ControllerPlayer";
 import { usePlaybackCore, AuthRedirectError } from "@/hooks/usePlaybackCore";
 import { useLocale } from "@/hooks/useLocale";
 import { useConnectivity } from "@/hooks/useConnectivity";
-import type { Chapter } from "@/lib/render/chapters";
+import type { Chapter, RenderedTransitionWindow } from "@/lib/render/chapters";
 import { normalizeChaptersManifest } from "@/lib/render/chapters";
 import { chapterLineHeadings } from "@/lib/render/chapter-sections";
 import { toListenTimelineSources, type ListenSongsetItemPayload } from "@/lib/arrangements-listen";
@@ -39,7 +39,7 @@ async function loadChapters(
   isCancelled: () => boolean,
   setChapters: (chapters: Chapter[]) => void,
   setChapterHeadings: (headings: (string | null)[][] | null) => void,
-  setTitleCardOffsetSeconds: (seconds: number) => void,
+  setMediaGlueWindows: (windows: RenderedTransitionWindow[]) => void,
   headingSources: TimelineItemSource[] | null
 ): Promise<void> {
   try {
@@ -48,7 +48,16 @@ async function loadChapters(
     const manifest = normalizeChaptersManifest(await response.json());
     if (isCancelled()) return;
     setChapters(manifest.chapters);
-    setTitleCardOffsetSeconds(manifest.titleCardOffsetSeconds ?? 0);
+    const offset = manifest.songsetOffsetSeconds ?? manifest.titleCardOffsetSeconds ?? 0;
+    setMediaGlueWindows(manifest.transitionWindows ?? (
+      headingSources
+        ? buildArrangementTimeline(headingSources).items.flatMap(({ glueWindowBefore: window }) =>
+            window ? [{
+              startSeconds: window.startSeconds + offset,
+              endSeconds: window.endSeconds + offset,
+            }] : [])
+        : []
+    ));
     // Section Label headings map each line's global second back through the
     // current Song Arrangement; null (flat sheet) whenever that cannot be done
     // safely — see lib/render/chapter-sections.ts.
@@ -57,7 +66,7 @@ async function loadChapters(
         ? chapterLineHeadings(
             manifest.chapters,
             headingSources,
-            manifest.titleCardOffsetSeconds ?? 0
+            offset
           )
         : null
     );
@@ -85,19 +94,7 @@ export default function ControllerPage() {
   // the render is stale/rendering/failed, the chapters do not line up with the
   // timeline, or the payload has no Items. Computed once the manifest lands.
   const [chapterHeadings, setChapterHeadings] = useState<(string | null)[][] | null>(null);
-  // Silence the render worker prepended for the Title Card (`chapters.json`
-  // `titleCardOffsetSeconds`, #326). Chapter, lyric and Glue seconds of the
-  // manifest/media all include it; a timeline built from the Song Arrangement
-  // starts at 0, so anything taken from that timeline must add it back before
-  // it is drawn against the media.
-  const [titleCardOffsetSeconds, setTitleCardOffsetSeconds] = useState(0);
-  // Effective AI-transition windows for the fresh rendered timeline. The
-  // chapters manifest has no junction data, so these come from the same
-  // resolved item payload as the headings. Stale/absent renders show none.
-  // Seconds are Arrangement-timeline seconds (no Title Card lead-in).
-  const [arrangementGlueWindows, setArrangementGlueWindows] = useState<
-    { startSeconds: number; endSeconds: number }[]
-  >([]);
+  const [mediaGlueWindows, setMediaGlueWindows] = useState<RenderedTransitionWindow[]>([]);
   // Where the error screen's Go Back goes: the Songset it was opened from.
   // A Songset that 404s has no page to return to, so that error falls back
   // to the list (see runOnlineChain).
@@ -117,6 +114,7 @@ export default function ControllerPage() {
       if (!record) return null;
       const offline = await resolveOfflinePlayback(songsetId);
       if (!offline) return null;
+      setMediaGlueWindows(offline.transitionWindows ?? []);
       return {
         title: offline.songsetName,
         chapters: offline.chapters,
@@ -171,20 +169,7 @@ export default function ControllerPage() {
       const headingSources: TimelineItemSource[] | null =
         songsetData.renderState === "fresh" ? toListenTimelineSources(sortedItems) : null;
       if (headingSources === null) setChapterHeadings(null);
-      setArrangementGlueWindows(
-        headingSources === null
-          ? []
-          : buildArrangementTimeline(headingSources).items.flatMap((timelineItem) =>
-              timelineItem.glueWindowBefore
-                ? [
-                    {
-                      startSeconds: timelineItem.glueWindowBefore.startSeconds,
-                      endSeconds: timelineItem.glueWindowBefore.endSeconds,
-                    },
-                  ]
-                : []
-            )
-      );
+      setMediaGlueWindows([]);
 
       // Check if render artifacts exist
       if (!songsetData.latestRenderJobId) {
@@ -238,23 +223,12 @@ export default function ControllerPage() {
           isCancelled,
           setChapters,
           setChapterHeadings,
-          setTitleCardOffsetSeconds,
+          setMediaGlueWindows,
           headingSources
         );
       }
     },
   });
-
-  // Glue windows on the rendered-media timeline: the arrangement timeline they
-  // come from has no Title Card lead-in, the media does.
-  const mediaGlueWindows = useMemo(
-    () =>
-      arrangementGlueWindows.map((window) => ({
-        startSeconds: window.startSeconds + titleCardOffsetSeconds,
-        endSeconds: window.endSeconds + titleCardOffsetSeconds,
-      })),
-    [arrangementGlueWindows, titleCardOffsetSeconds]
-  );
 
   const { media } = core;
 

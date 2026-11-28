@@ -20,6 +20,8 @@ const RenderForm = dynamic(() => import("@/components/render/RenderForm").then((
 type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed"
 
 interface SongsetData {
+  arrangedOpening?: boolean
+  openingSilenceSeconds?: number
   id: string
   name: string
   description: string | null
@@ -239,6 +241,8 @@ export function RenderPageClient({
           }
           currentSongCount={currentSongCount ?? songset.songs.length}
           currentSongsetDurationSeconds={currentSongsetDurationSeconds ?? songset.durationSeconds}
+          arrangedOpening={songset.arrangedOpening}
+          openingSilenceSeconds={songset.openingSilenceSeconds}
           gluePreflight={gluePreflight}
           onGluePreflightChanged={() => router.refresh()}
         />

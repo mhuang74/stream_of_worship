@@ -20,7 +20,7 @@
  * manifest yields no chapters, never a failed media boot.
  */
 
-import { normalizeChaptersManifest, type Chapter } from "@/lib/render/chapters";
+import { normalizeChaptersManifest, type Chapter, type ChaptersManifest, type RenderedTransitionWindow } from "@/lib/render/chapters";
 import { matchCachedArtifact } from "./artifact-cache";
 import { getOfflineRecord } from "./offline-index";
 import { getShareOfflineRecord } from "./share-offline-index";
@@ -41,6 +41,7 @@ export interface OfflinePlayback {
    */
   viaProxy: boolean;
   chapters: Chapter[];
+  transitionWindows?: RenderedTransitionWindow[];
   /** Position-aligned recording content hashes: the Lyrics Feedback key. */
   chapterRecordingHashes: (string | null)[];
 }
@@ -99,14 +100,14 @@ export function revokeOfflineBlobUrl(src: string): void {
 }
 
 /** Cached chapters manifest; empty when it was never cached or fails to parse. */
-async function cachedChapters(renderJobId: string): Promise<Chapter[]> {
+async function cachedChapters(renderJobId: string): Promise<ChaptersManifest | null> {
   const cached = await matchCachedArtifact(renderJobId, "chapters");
-  if (!cached) return [];
+  if (!cached) return null;
 
   try {
-    return normalizeChaptersManifest(await cached.json()).chapters;
+    return normalizeChaptersManifest(await cached.json());
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -142,6 +143,7 @@ async function playbackFromRecord(
 
   const source = await sourceFor(record.renderJobId, video ? "video" : "audio", cached);
   if (!source) return null;
+  const manifest = await cachedChapters(record.renderJobId);
 
   return {
     renderJobId: record.renderJobId,
@@ -149,7 +151,8 @@ async function playbackFromRecord(
     kind: video ? "video" : "audio",
     src: source.src,
     viaProxy: source.viaProxy,
-    chapters: await cachedChapters(record.renderJobId),
+    chapters: manifest?.chapters ?? [],
+    ...(manifest?.transitionWindows ? { transitionWindows: manifest.transitionWindows } : {}),
     chapterRecordingHashes: record.chapterContentHashes,
   };
 }
