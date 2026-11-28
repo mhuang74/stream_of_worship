@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import time
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -165,6 +166,68 @@ def test_lambda_presigning_matches_the_gpu_worker_put_contract(worker_handler):
     request["input"]["result_headers"]["If-None-Match"] = "other"
     with pytest.raises(ValueError, match="result contract"):
         worker_handler.validate(request["input"], host, "private")
+
+
+def _signed_payload(host, prefix="glue-simdps-tmp/7/job"):
+    r2 = R2Client(f"https://{host}", "fake", "fake", "private", bounded=True)
+    r2.client.put_object = lambda **_: None
+    route, inputs = provider.stage_inputs(
+        r2,
+        "endpoint",
+        prefix,
+        (
+            b"montage",
+            b"guide",
+            {
+                "a_frames": 264600,
+                "fill_frames": 132300,
+                "b_frames": 264180,
+                "guide_frames": 264180,
+                "seed": 123,
+            },
+        ),
+    )
+    return r2, route, provider.sign_request(r2, prefix, route, inputs, window_seconds=300)["input"]
+
+
+def _resign(r2, route, payload, *, expires, field="montage_url", key="montage_key"):
+    payload[field] = r2.client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": "private", "Key": route[key]},
+        ExpiresIn=expires,
+        HttpMethod="GET",
+    )
+
+
+def test_gpu_worker_accepts_the_signer_lifetime(worker_handler):
+    host = "a" * 32 + ".r2.cloudflarestorage.com"
+    _, _, payload = _signed_payload(host)
+    assert worker_handler.validate(payload, host, "private") == (264600, 132300, 264180, 264180)
+
+
+def test_gpu_worker_accepts_a_lifetime_inside_the_contract(worker_handler):
+    host = "a" * 32 + ".r2.cloudflarestorage.com"
+    r2, route, payload = _signed_payload(host)
+    _resign(r2, route, payload, expires=120)
+    assert worker_handler.validate(payload, host, "private") == (264600, 132300, 264180, 264180)
+
+
+def test_gpu_worker_rejects_a_lifetime_beyond_the_contract(worker_handler):
+    host = "a" * 32 + ".r2.cloudflarestorage.com"
+    r2, route, payload = _signed_payload(host)
+    _resign(r2, route, payload, expires=simdps_audio.PRESIGN_SECONDS + 1)
+    with pytest.raises(ValueError, match="Invalid signed object location"):
+        worker_handler.validate(payload, host, "private")
+
+
+def test_gpu_worker_rejects_a_stale_submission(worker_handler):
+    host = "a" * 32 + ".r2.cloudflarestorage.com"
+    _, _, payload = _signed_payload(host)
+    payload["submitted_epoch"] = time.time() - simdps_audio.STALE_SECONDS - 1
+    with pytest.raises(ValueError, match="stale"):
+        worker_handler.validate(payload, host, "private")
+    payload.pop("submitted_epoch")
+    assert worker_handler.validate(payload, host, "private") == (264600, 132300, 264180, 264180)
 
 
 def test_handler_quantizes_only_the_fill_and_accepts_create_only_conflict(

@@ -37,6 +37,7 @@ from sow_render_worker.simdps_audio import (
     CHECKPOINT_REVISION,
     INPUT_CAP_BYTES,
     MODEL_ID,
+    PRESIGN_SECONDS,
     SAMPLE_RATE,
     STEPS,
     UPSTREAM_REVISION,
@@ -380,7 +381,7 @@ def sign_request(r2, prefix, route, request, *, window_seconds):
         request[f"{name}_url"] = r2.client.generate_presigned_url(
             "get_object",
             Params={"Bucket": r2.bucket_name, "Key": route[f"{name}_key"]},
-            ExpiresIn=600,
+            ExpiresIn=PRESIGN_SECONDS,
             HttpMethod="GET",
         )
     route["result_key"] = f"{prefix}/{route['submission_id']}/seam.pcm"
@@ -402,9 +403,10 @@ def sign_request(r2, prefix, route, request, *, window_seconds):
             "IfNoneMatch": "*",
             "Metadata": metadata,
         },
-        ExpiresIn=600,
+        ExpiresIn=PRESIGN_SECONDS,
         HttpMethod="PUT",
     )
+    request["submitted_epoch"] = time.time()
     return {"input": request, "policy": policy_for_window(window_seconds)}
 
 

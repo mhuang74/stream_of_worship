@@ -5,6 +5,7 @@ import json
 import os
 import re
 from io import BytesIO
+from math import isfinite
 from time import monotonic, time
 from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import UUID
@@ -17,7 +18,9 @@ from simdps_audio import (
     CHECKPOINT_REVISION,
     INPUT_CAP_BYTES,
     MODEL_ID,
+    PRESIGN_SECONDS,
     SAMPLE_RATE,
+    STALE_SECONDS,
     STEPS,
     UPSTREAM_REVISION,
     extract_fill,
@@ -37,6 +40,7 @@ def _url_path(url, host, bucket, submission, name, headers):
     parts = urlsplit(url)
     path = unquote(parts.path).split("/")
     query = parse_qs(parts.query)
+    lifetime = query.get("X-Amz-Expires", ())
     if (
         parts.scheme != "https"
         or parts.netloc != host
@@ -46,7 +50,9 @@ def _url_path(url, host, bucket, submission, name, headers):
         or not all(SAFE_COMPONENT.fullmatch(value) for value in path[3:5])
         or path[5:] != [submission, name]
         or query.get("X-Amz-Algorithm") != ["AWS4-HMAC-SHA256"]
-        or query.get("X-Amz-Expires") != ["600"]
+        or len(lifetime) != 1
+        or not (lifetime[0].isascii() and lifetime[0].isdigit())
+        or not 1 <= int(lifetime[0]) <= PRESIGN_SECONDS
         or set(query.get("X-Amz-SignedHeaders", [""])[0].split(";"))
         != {"host", *(key.lower() for key in headers)}
     ):
@@ -60,6 +66,14 @@ def validate(payload, host, bucket):
     submission = payload.get("submission_id")
     if not isinstance(submission, str) or str(UUID(submission)) != submission:
         raise ValueError("Invalid submission ID")
+    submitted = payload.get("submitted_epoch")
+    if submitted is not None:
+        # Workers built before this contract sign no submission time; only a
+        # stamped payload can be checked, and an unstamped one stays acceptable.
+        if type(submitted) not in (int, float) or not isfinite(submitted):
+            raise ValueError("Invalid submission time")
+        if time() - submitted > STALE_SECONDS:
+            raise ValueError("Input submission is stale")
     limits = {
         "a_frames": SAMPLE_RATE * 12,
         "fill_frames": SAMPLE_RATE * 15,
