@@ -437,6 +437,11 @@ def _error_for_response(status: int, body: str, operation: str) -> GlueProviderE
 # ---------------------------------------------------------------------------
 
 
+def _elevenlabs_seed(seed: int) -> int:
+    # Jobs queued by older webapp bundles can still carry unsigned seeds.
+    return int(seed) & 0x7FFF_FFFF
+
+
 def build_compose_request(
     *,
     seed: int,
@@ -468,7 +473,7 @@ def build_compose_request(
 
     return {
         "model_id": MODEL_ID,
-        "seed": int(seed),
+        "seed": _elevenlabs_seed(seed),
         "composition_plan": {
             "chunks": [
                 {
@@ -497,6 +502,29 @@ def build_compose_request(
             ]
         },
     }
+
+
+def build_boundary_compose_request(
+    *, target: str, seed: int, duration_ms: int, song_id: str, reference_ms: int
+) -> dict[str, Any]:
+    # ElevenLabs requires a three-second generation chunk. Staging crops the
+    # excess from the outer edge, preserving the join next to the recording.
+    retained = {"song_id": song_id, "range": {"start_ms": 0, "end_ms": reference_ms}}
+    generated = {
+        "text": "[Intro]" if target == "intro" else "[Outro]",
+        "duration_ms": max(3000, duration_ms),
+        "positive_styles": [
+            "instrumental only", "same tempo and key", "match the reference instrumentation",
+            "lead into the recorded entrance" if target == "intro"
+            else "resolve on a final chord and end cleanly",
+        ],
+        "negative_styles": ["vocals", "singing", "spoken words"],
+        "context_adherence": CONTEXT_ADHERENCE,
+        "conditioning_ref": retained,
+        "condition_strength": CONDITION_STRENGTH,
+    }
+    chunks = [generated, retained] if target == "intro" else [retained, generated]
+    return {"model_id": MODEL_ID, "seed": _elevenlabs_seed(seed), "composition_plan": {"chunks": chunks}}
 
 
 # ---------------------------------------------------------------------------
@@ -827,8 +855,9 @@ def _run_stage(
         return
 
     beats, tempo = _job_timing(spine, job)
+    target = getattr(job, "target", "junction")
     try:
-        duration_ms = generation_duration_ms(beats, tempo)
+        duration_ms = generation_duration_ms(beats, tempo, boundary=target != "junction")
     except (TypeError, ValueError) as exc:
         raise _glue_job_error(spine, GLUE_WORKER_FAILED, "free", str(exc)) from exc
     if duration_ms > MAX_GENERATION_MS:
@@ -842,10 +871,9 @@ def _run_stage(
         )
 
     song_ids: dict[str, str] = {}
-    pending_uploads = sum(
-        not excerpt.elevenlabs_song_id for excerpt in (a_excerpt, b_excerpt)
-    )
-    for excerpt in (a_excerpt, b_excerpt):
+    excerpts = [excerpt for excerpt in (a_excerpt, b_excerpt) if excerpt is not None]
+    pending_uploads = sum(not excerpt.elevenlabs_song_id for excerpt in excerpts)
+    for excerpt in excerpts:
         side = excerpt.side
         if excerpt.rejection_code == GLUE_COPYRIGHT_REJECTED:
             log_event(
@@ -964,15 +992,25 @@ def _run_stage(
             status="uploaded",
         )
 
-    request = build_compose_request(
-        seed=int(job.seed),
-        beats=beats,
-        to_tempo_bpm=tempo,
-        a_song_id=song_ids["A"],
-        a_ref_ms=_reference_ms(spine, a_excerpt),
-        b_song_id=song_ids["B"],
-        b_ref_ms=_reference_ms(spine, b_excerpt),
-    )
+    if target == "junction":
+        request = build_compose_request(
+            seed=int(job.seed),
+            beats=beats,
+            to_tempo_bpm=tempo,
+            a_song_id=song_ids["A"],
+            a_ref_ms=_reference_ms(spine, a_excerpt),
+            b_song_id=song_ids["B"],
+            b_ref_ms=_reference_ms(spine, b_excerpt),
+        )
+    else:
+        excerpt = excerpts[0]
+        request = build_boundary_compose_request(
+            target=target,
+            seed=int(job.seed),
+            duration_ms=duration_ms,
+            song_id=song_ids[excerpt.side],
+            reference_ms=_reference_ms(spine, excerpt),
+        )
 
     # Heartbeat, then the full compose reserve *before* entering the in-flight
     # phase: a refusal here is still definitely-unsent work (free resume) and

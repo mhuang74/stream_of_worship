@@ -115,6 +115,7 @@ export interface SongsetEditorProps {
   /** Slot for the offline download control (OfflineStatus), rendered by the
    * client host that owns the render-job state. */
   offlineStatusSlot?: React.ReactNode;
+  aiTransitionsSlot?: React.ReactNode;
   /** True when the offline copy exists, so the header metadata line shows the
    * "Offline" badge. */
   isOfflineAvailable?: boolean;
@@ -147,6 +148,7 @@ export function SongsetEditor({
   highlightSongId,
   onHighlightConsumed,
   offlineStatusSlot,
+  aiTransitionsSlot,
   isOfflineAvailable = false,
 }: SongsetEditorProps) {
   const backToList = useSongsetListBack();
@@ -561,6 +563,7 @@ export function SongsetEditor({
       {/* Offline download control (moved from the deleted Play screen,
           issue #211 follow-up Q16): download/refresh the offline copy. */}
       {offlineStatusSlot}
+      {aiTransitionsSlot}
 
       {/* Render failure alert */}
       {songset.renderState === "failed" && (

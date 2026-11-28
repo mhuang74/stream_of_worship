@@ -35,6 +35,7 @@ from sow_render_worker.db import (
     list_glue_takes_for_descriptor,
     read_songset_items_for_glue,
     select_glue_take_for_junction,
+    select_glue_take_for_boundary,
     finish_glue_job_ready,
     get_glue_job,
 )
@@ -430,6 +431,46 @@ def _take_provider(job):
     return route.get("provider", "elevenlabs"), route
 
 
+def _prepare_boundary_take(seam, descriptor, route, simdps, reference):
+    target = descriptor["target"]
+    milliseconds = generation_duration_ms(
+        descriptor["beats"], descriptor["toTempoBpm"], boundary=True
+    )
+    frames = milliseconds_to_frames(milliseconds)
+    if simdps:
+        if route["fill_frames"] != frames:
+            raise _worker_error("The SimDPS boundary fill length changed")
+        start, expected = route["a_frames"], route["a_frames"] + frames + route["b_frames"]
+    else:
+        side = "b" if target == "intro" else "a"
+        seconds = route.get(f"{side}_seconds") or getattr(reference, f"{side}_seconds")
+        seconds = seconds or _predicted_side_seconds(descriptor["recording"]["steps"], None)
+        if not seconds:
+            raise _worker_error("The stored boundary reference geometry is incomplete")
+        reference_frames = _seconds_to_samples(seconds)
+        chunk_frames = milliseconds_to_frames(max(3000, milliseconds))
+        start = chunk_frames - frames if target == "intro" else reference_frames
+        expected = reference_frames + chunk_frames
+    if abs(len(seam) - expected) > _seconds_to_samples(GEOMETRY_TOLERANCE_SECONDS) + 1:
+        raise _worker_error("The provider response duration does not match the boundary")
+    generated = seam[start : start + frames]
+    if len(generated) != frames:
+        raise _worker_error("The provider response ended before the requested boundary interval")
+    rms = validate_generated_level(generated)
+    faded = generated.astype(np.float32) / 32768.0
+    for channel in range(CHANNELS):
+        faded[:, channel] = _apply_fades(faded[:, channel])
+    limited, _, _ = _limit_peak(faded)
+    seconds = canonical_six_dp(frames / SAMPLE_RATE)
+    return PreparedTake(
+        wav_bytes=_wav_bytes(_to_pcm16(limited)),
+        seconds=seconds,
+        status="ok",
+        reasons=(),
+        metrics={"status": "ok", "seconds": seconds, "generatedRmsDb": round(rms, 2)},
+    )
+
+
 def prepare_staged_take(
     raw: bytes,
     *,
@@ -444,6 +485,8 @@ def prepare_staged_take(
     cascade = (getattr(job, "provider_context_json", None) or {}).get("provider") == "cascade"
     simdps = backend in {"simdps", "modal", "runpod"}
     seam = decode_stereo_pcm16(raw, headerless=simdps)
+    if descriptor.get("target") in ("intro", "outro"):
+        return _prepare_boundary_take(seam, descriptor, route, simdps, reference)
     from_payload = descriptor.get("from") if isinstance(descriptor, dict) else None
     to_payload = descriptor.get("to") if isinstance(descriptor, dict) else None
     if not isinstance(from_payload, dict) or not isinstance(to_payload, dict):
@@ -621,9 +664,10 @@ def load_reference_audio(
         from sow_render_worker.glue_excerpts import build_excerpt
 
         audio: dict[str, tuple[np.ndarray, float]] = {}
-        for side in ("A", "B"):
+        for side in spine.reference_sides(job):
             item = items.get(job.from_item_id if side == "A" else job.to_item_id)
-            payload = descriptor.get("from" if side == "A" else "to")
+            payload = descriptor.get("recording" if "target" in descriptor else
+                                     ("from" if side == "A" else "to"))
             if not item or not isinstance(payload, dict):
                 return ReferenceAudio()
             source_path = spine._free_retry(
@@ -646,10 +690,10 @@ def load_reference_audio(
                 return ReferenceAudio()
             audio[side] = (_mono(np.asarray(samples)), float(seconds))
         return ReferenceAudio(
-            a=audio["A"][0],
-            b=audio["B"][0],
-            a_seconds=audio["A"][1],
-            b_seconds=audio["B"][1],
+            a=audio.get("A", (None, None))[0],
+            b=audio.get("B", (None, None))[0],
+            a_seconds=audio.get("A", (None, None))[1],
+            b_seconds=audio.get("B", (None, None))[1],
         )
     except Exception as exc:
         log(
@@ -777,11 +821,18 @@ def record_staged_take(
 
         active_take_id: Optional[str] = None
         if current.active:
-            fresh_items = {
-                row["id"]: row
-                for row in read_songset_items_for_glue(conn, job.songset_id)
-            }
-            if _junction_is_current(fresh_items, job):
+            fresh_items = read_songset_items_for_glue(conn, job.songset_id)
+            if getattr(job, "target", "junction") != "junction":
+                try:
+                    inputs = spine._rebuild_junction(fresh_items, job)
+                    if (inputs.canonical_json == job.descriptor_json
+                            and select_glue_take_for_boundary(conn, job, take.id)):
+                        active_take_id = take.id
+                except spine._StaleJunction:
+                    pass
+                if active_take_id is None:
+                    log("glue.staging.stale", takeId=take.id, status="take-retained-unselected")
+            elif _junction_is_current({row["id"]: row for row in fresh_items}, job):
                 if select_glue_take_for_junction(
                     conn,
                     item_id=job.from_item_id,

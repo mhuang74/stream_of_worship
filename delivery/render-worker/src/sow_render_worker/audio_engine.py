@@ -98,6 +98,8 @@ class ExportResult:
     channels: int = 2
     lead_in_seconds: float = 0.0
     glue_windows: tuple[GlueWindow, ...] = field(default_factory=tuple)
+    first_lyrics_hold_start: float | None = None
+    outro_start: float | None = None
 
 
 GLUE_SECONDS_EPSILON = 0.05
@@ -290,7 +292,7 @@ def build_ffmpeg_filter_complex(
             filters.append(f"afade=t=out:st={fade_out_start:.3f}:d={fade_out_dur:.3f}")
 
         if audio_file["start_ms"] > 0:
-            delay = round(audio_file["start_ms"])
+            delay = f"{audio_file['start_ms']:.6f}".rstrip("0").rstrip(".")
             filters.append(f"adelay={delay}|{delay}")
 
         output_label = f"a{i}"
@@ -357,6 +359,10 @@ def generate_songset_audio(
     job_id: str | None = None,
     lead_in_resolver: Callable[[tuple[AudioSegmentInfo, ...]], float] | None = None,
     glue_clips: dict[str, GlueClip] | None = None,
+    intro: GlueClip | None = None,
+    outro: GlueClip | None = None,
+    first_lyrics_hold_start: float | None = None,
+    opening_silence_seconds: float = 0.0,
 ) -> ExportResult:
     if not items:
         raise ValueError("Cannot generate audio for empty songset")
@@ -528,18 +534,19 @@ def generate_songset_audio(
     lead_in_seconds = 0.0
     if lead_in_resolver is not None:
         lead_in_seconds = max(0.0, lead_in_resolver(tuple(segments)))
-    if lead_in_seconds > 0:
-        lead_in_ms = round(lead_in_seconds * 1000)
+    shift_seconds = lead_in_seconds + opening_silence_seconds + (intro.seconds if intro else 0)
+    if shift_seconds > 0:
+        shift_ms = shift_seconds * 1000
         shifted_segments: list[AudioSegmentInfo] = []
         for segment in segments:
             shifted_segments.append(
                 replace(
                     segment,
-                    start_time_seconds=segment.start_time_seconds + lead_in_seconds,
+                    start_time_seconds=segment.start_time_seconds + shift_seconds,
                     clips=tuple(
                         replace(
                             clip,
-                            start_time_seconds=clip.start_time_seconds + lead_in_seconds,
+                            start_time_seconds=clip.start_time_seconds + shift_seconds,
                         )
                         for clip in segment.clips
                     ),
@@ -549,21 +556,40 @@ def generate_songset_audio(
         glue_windows = [
             replace(
                 window,
-                start_seconds=window.start_seconds + lead_in_seconds,
-                end_seconds=window.end_seconds + lead_in_seconds,
+                start_seconds=window.start_seconds + shift_seconds,
+                end_seconds=window.end_seconds + shift_seconds,
             )
             for window in glue_windows
         ]
         for audio_file in audio_files:
-            audio_file["start_ms"] += lead_in_ms
+            audio_file["start_ms"] += shift_ms
             for clip in audio_file["clips"]:
-                clip["start_time_seconds"] += lead_in_seconds
-        current_time_ms += lead_in_ms
-        logger.info(
-            "[%s] Audio: title card lead-in %.3fs prepended to the mix",
-            job_id or "unknown",
-            lead_in_seconds,
-        )
+                clip["start_time_seconds"] += shift_seconds
+
+    current_time_ms = max(entry["start_ms"] + entry["duration_ms"] for entry in audio_files)
+    outro_start = current_time_ms / 1000 if outro else None
+    for direction, boundary, start in (
+        ("intro", intro, lead_in_seconds), ("outro", outro, outro_start)
+    ):
+        if boundary is None or start is None:
+            continue
+        _validate_glue_clip(boundary, to_item_id=direction)
+        placement = {
+            "crossfade_ms": 0,
+            "duration_ms": boundary.seconds * 1000,
+            "start_ms": start * 1000,
+            "clips": [{
+                "path": boundary.path,
+                "source_start_seconds": 0.0,
+                "source_end_seconds": boundary.seconds,
+                "start_time_seconds": start,
+            }],
+        }
+        if direction == "intro":
+            audio_files.insert(0, placement)
+        else:
+            audio_files.append(placement)
+            current_time_ms += boundary.seconds * 1000
 
     output_dir = Path(output_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -601,6 +627,8 @@ def generate_songset_audio(
         channels=channels,
         lead_in_seconds=lead_in_seconds,
         glue_windows=tuple(glue_windows),
+        first_lyrics_hold_start=first_lyrics_hold_start,
+        outro_start=outro_start,
     )
 
 

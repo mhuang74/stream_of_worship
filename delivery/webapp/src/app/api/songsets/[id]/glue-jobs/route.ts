@@ -17,12 +17,17 @@ export const dynamic = "force-dynamic";
 const createGlueJobSchema = z
   .object({
     fromItemId: z.string().min(1),
+    target: z.enum(["junction", "intro", "outro"]).optional(),
+    expectedDescriptorKey: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     clientRequestId: z.string().uuid(),
     expectedFromUpdatedAt: z.string().datetime({ offset: true }),
     expectedToUpdatedAt: z.string().datetime({ offset: true }),
     takeMode: z.enum(["initial", "new-take"]),
   })
-  .strict();
+  .strict()
+  .refine((input) =>
+    (input.target !== "intro" && input.target !== "outro") || input.expectedDescriptorKey
+  );
 
 function unauthorized(): NextResponse {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,6 +54,10 @@ export async function POST(
       );
     }
 
+    if ((parsed.data.target === "intro" || parsed.data.target === "outro") &&
+        process.env.SOW_SONGSET_BOUNDARIES_ENABLED !== "1") {
+      return NextResponse.json({ code: "GLUE_NOT_CONFIGURED" }, { status: 409 });
+    }
     const outcome = await createGlueJob({
       songsetId: id,
       userId: Number(session.user.id),

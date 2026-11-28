@@ -66,6 +66,7 @@ class RenderJob:
     font_size_preset: str = "M"
     font_family: str = "noto_serif_tc"
     include_title_card: bool = False
+    first_lyrics_hold: bool = False
     title_card_duration_seconds: Optional[float] = None
     title_card_lines: Optional[list[str]] = None
     mp3_r2_key: Optional[str] = None
@@ -165,6 +166,8 @@ class GlueJob:
     started_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    target: str = "junction"
+    boundary_revision: str | None = None
 
 
 @dataclass
@@ -211,8 +214,10 @@ def _row_to_glue_job(row: dict[str, Any]) -> GlueJob:
         id=_uuid_str(row["id"]) or "",
         user_id=row["user_id"],
         songset_id=row["songset_id"],
-        from_item_id=row["from_item_id"],
-        to_item_id=row["to_item_id"],
+        from_item_id=row["from_item_id"] or row["boundary_item_id"],
+        to_item_id=row["to_item_id"] or row["boundary_item_id"],
+        target=row.get("target", "junction"),
+        boundary_revision=row.get("boundary_revision"),
         client_request_id=_uuid_str(row["client_request_id"]) or "",
         take_mode=row["take_mode"],
         descriptor_key=row["descriptor_key"],
@@ -332,6 +337,7 @@ def _row_to_render_job(row: dict[str, Any]) -> RenderJob:
         font_size_preset=row.get("font_size_preset") or "M",
         font_family=_normalize_font_family(row.get("font_family")),
         include_title_card=row.get("include_title_card", False),
+        first_lyrics_hold=row.get("first_lyrics_hold", False),
         title_card_duration_seconds=row.get("title_card_duration_seconds"),
         title_card_lines=title_card_lines,
         mp3_r2_key=row.get("mp3_r2_key"),
@@ -885,8 +891,33 @@ _GLUE_PROVIDER_JOB_PHASE = {
 }
 
 
-_GLUE_SNAPSHOT_GUARD = """
-    AND EXISTS (
+_BOUNDARY_SNAPSHOT_GUARD = """
+    EXISTS (
+        SELECT 1
+        FROM songsets ss JOIN songset_items si ON si.songset_id = ss.id
+        LEFT JOIN recordings r ON r.hash_prefix = si.recording_hash_prefix
+        WHERE ss.id = glue_jobs.songset_id AND ss.user_id = glue_jobs.user_id
+        AND si.id = glue_jobs.boundary_item_id
+        AND si.updated_at = glue_jobs.expected_from_updated_at
+        AND r.deleted_at IS NULL
+        AND ss.boundary_settings->glue_jobs.target->>'enabled' = 'true'
+        AND ss.boundary_settings->glue_jobs.target->>'beats' =
+            glue_jobs.descriptor_json::jsonb->>'beats'
+        AND (ss.boundary_settings->glue_jobs.target->>'revision')
+            IS NOT DISTINCT FROM glue_jobs.boundary_revision
+        AND NOT EXISTS (
+            SELECT 1 FROM songset_items neighbor
+            LEFT JOIN recordings nr ON nr.hash_prefix = neighbor.recording_hash_prefix
+            WHERE neighbor.songset_id = ss.id AND nr.deleted_at IS NULL
+            AND ((glue_jobs.target = 'intro' AND neighbor.position < si.position)
+              OR (glue_jobs.target = 'outro' AND neighbor.position > si.position))
+        )
+        FOR SHARE OF ss, si
+    )
+"""
+
+_GLUE_SNAPSHOT_GUARD = f"""
+    AND ((glue_jobs.target = 'junction' AND EXISTS (
         SELECT 1
         FROM songset_items a JOIN songset_items b ON b.songset_id = a.songset_id
         WHERE a.id = glue_jobs.from_item_id AND b.id = glue_jobs.to_item_id
@@ -900,7 +931,7 @@ _GLUE_SNAPSHOT_GUARD = """
             AND between_items.position > a.position AND between_items.position < b.position
         )
         FOR SHARE OF a, b
-    )
+    )) OR (glue_jobs.target IN ('intro', 'outro') AND {_BOUNDARY_SNAPSHOT_GUARD}))
 """
 
 
@@ -1433,6 +1464,34 @@ def select_glue_take_for_junction(
     return selected
 
 
+def select_glue_take_for_boundary(conn: Any, job: GlueJob, take_id: str) -> bool:
+    """Select an already staged take while its direction and saved inputs still match."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE songsets SET
+                boundary_settings = jsonb_set(
+                    songsets.boundary_settings, ARRAY[glue_jobs.target],
+                    (songsets.boundary_settings->glue_jobs.target) ||
+                    jsonb_build_object(
+                        'takeId', %s::text, 'revision', %s::text,
+                        'selections',
+                        coalesce(songsets.boundary_settings->glue_jobs.target->'selections', '{{}}')
+                            || jsonb_build_object(glue_jobs.descriptor_key, %s::text)
+                    )
+                ),
+                updated_at = now(), boundary_updated_at = now()
+            FROM glue_jobs
+            WHERE glue_jobs.id = %s AND glue_jobs.user_id = %s
+            AND glue_jobs.songset_id = songsets.id AND songsets.user_id = glue_jobs.user_id
+            AND {_BOUNDARY_SNAPSHOT_GUARD}
+            RETURNING songsets.id
+            """,
+            (take_id, take_id, take_id, job.id, job.user_id),
+        )
+        return cur.fetchone() is not None
+
+
 def get_glue_excerpt(
     conn: psycopg2.extensions.connection,
     user_id: int,
@@ -1542,6 +1601,7 @@ def read_songset_items_for_glue(
             "  si.glue_beats, "
             "  si.glue_active_take_id, "
             "  si.updated_at, "
+            "  ss.boundary_settings, "
             "  r.tempo_bpm, "
             "  r.duration_seconds, "
             "  r.sections, "
@@ -1550,6 +1610,7 @@ def read_songset_items_for_glue(
             "  r.deleted_at, "
             "  s.title AS song_title "
             "FROM songset_items si "
+            "JOIN songsets ss ON ss.id = si.songset_id "
             "LEFT JOIN recordings r ON si.recording_hash_prefix = r.hash_prefix "
             "LEFT JOIN songs s ON si.song_id = s.id "
             "WHERE si.songset_id = %s "

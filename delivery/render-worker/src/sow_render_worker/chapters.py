@@ -51,11 +51,20 @@ class Chapter:
 
 
 @dataclass(frozen=True)
+class TransitionWindow:
+    start_seconds: float
+    end_seconds: float
+    target: str
+
+
+@dataclass(frozen=True)
 class ChaptersManifest:
     chapters: tuple[Chapter, ...] = field(default_factory=tuple)
     total_duration_seconds: float = 0.0
     generated_at: str = ""
     title_card_offset_seconds: float = 0.0
+    songset_offset_seconds: float | None = None
+    transition_windows: tuple[TransitionWindow, ...] | None = None
 
     def to_camel_case_dict(self) -> dict:
         return dataclass_to_camel_case_dict(self)
@@ -151,6 +160,8 @@ def generate_chapters_manifest(
     download_lrc: Callable[[str], str | None | object],
     total_duration_seconds: float,
     offset_seconds: float = 0.0,
+    songset_offset_seconds: float | None = None,
+    transition_windows: tuple[TransitionWindow, ...] | None = None,
 ) -> ChaptersManifest:
     from .lrc_parser import parse_lrc, remap_lrc_to_clips
 
@@ -185,6 +196,8 @@ def generate_chapters_manifest(
         total_duration_seconds=total_duration_seconds,
         generated_at=datetime.now(timezone.utc).isoformat(),
         title_card_offset_seconds=offset_seconds,
+        songset_offset_seconds=songset_offset_seconds,
+        transition_windows=transition_windows,
     )
 
 
@@ -277,4 +290,9 @@ def parse_chapters_manifest(json_str: str) -> ChaptersManifest:
         total_duration_seconds=float(parsed["totalDurationSeconds"]),
         generated_at=parsed["generatedAt"],
         title_card_offset_seconds=float(parsed.get("titleCardOffsetSeconds", 0.0) or 0.0),
+        songset_offset_seconds=parsed.get("songsetOffsetSeconds"),
+        transition_windows=tuple(
+            TransitionWindow(window["startSeconds"], window["endSeconds"], window["target"])
+            for window in parsed["transitionWindows"]
+        ) if isinstance(parsed.get("transitionWindows"), list) else None,
     )

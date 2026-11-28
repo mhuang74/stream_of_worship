@@ -11,6 +11,7 @@ import {
   type GlueQuota,
   type GlueRetryKind,
 } from "@/lib/glue/client";
+import type { SongsetBoundary } from "@/lib/glue/boundary-types";
 
 // One AI-transition job, observed through the SSE stream with discovery
 // fallback (spec §2.4). The hook exposes the server's real phase and elapsed
@@ -22,6 +23,7 @@ export interface UseGlueJobOptions {
   songsetId: string;
   fromItemId: string | null;
   enabled?: boolean;
+  target?: SongsetBoundary;
 }
 
 export interface UseGlueJobResult {
@@ -46,6 +48,7 @@ export function useGlueJob({
   songsetId,
   fromItemId,
   enabled = true,
+  target,
 }: UseGlueJobOptions): UseGlueJobResult {
   const [status, setStatus] = useState<GlueJobStatus | null>(null);
   const [streamError, setStreamError] = useState<GlueApiError | null>(null);
@@ -69,7 +72,7 @@ export function useGlueJob({
       setStreamError(null);
     }
     const stop = watchGlueJob(
-      { jobId, songsetId, fromItemId },
+      { jobId, songsetId, fromItemId, ...(target ? { target } : {}) },
       {
         onStatus: (next) => {
           if (disposed) return;
@@ -86,7 +89,7 @@ export function useGlueJob({
       disposed = true;
       stop();
     };
-  }, [enabled, jobId, songsetId, fromItemId, watchEpoch]);
+  }, [enabled, jobId, songsetId, fromItemId, target, watchEpoch]);
 
   const restart = useCallback(() => setWatchEpoch((value) => value + 1), []);
 

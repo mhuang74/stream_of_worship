@@ -28,6 +28,7 @@ from sow_render_worker.frame_renderer import (
     SegmentInfo,
     TitleCardConfig,
     VideoTemplateName,
+    has_lyric_content,
 )
 from sow_render_worker.lrc_parser import GlobalLRCLine, parse_lrc, remap_lrc_to_clips
 
@@ -208,6 +209,8 @@ class VideoEngine:
         timeout_check_callback: TimeoutCheckCallback | None = None,
         job_id: str | None = None,
         glue_windows: Sequence[GlueWindow] = (),
+        first_lyrics_hold_start: float | None = None,
+        outro_start: float | None = None,
     ) -> VideoExportResult:
         output_dir = Path(output_path).parent
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -248,7 +251,10 @@ class VideoEngine:
             )
             all_lyrics.extend(remapped_lyrics)
 
-        if not all_lyrics or all(not line.text for line in all_lyrics):
+        if (
+            first_lyrics_hold_start is None and outro_start is None
+            and not any(has_lyric_content(line.text) for line in all_lyrics)
+        ):
             return self.generate_blank_video(
                 audio_path,
                 output_path,
@@ -313,6 +319,10 @@ class VideoEngine:
             timeout_check_callback,
             job_id=job_id,
             glue_windows=_to_frame_glue_windows(glue_windows),
+            **({
+                "first_lyrics_hold_start": first_lyrics_hold_start,
+                "outro_start": outro_start,
+            } if first_lyrics_hold_start is not None or outro_start is not None else {}),
         )
 
         logger.info(
@@ -343,6 +353,8 @@ class VideoEngine:
         timeout_check_callback: TimeoutCheckCallback | None = None,
         job_id: str | None = None,
         glue_windows: Sequence[GlueWindowInfo] = (),
+        first_lyrics_hold_start: float | None = None,
+        outro_start: float | None = None,
     ) -> None:
         width, height = self.resolution
 
@@ -424,6 +436,33 @@ class VideoEngine:
             title_card_bytes = title_card_img.tobytes()
             title_card_img.close()
 
+        blank_frame = None
+        first_hold_end = 0.0
+        first_hold_frame = None
+        outro_frame = None
+        outro_hold_start = outro_start
+        if first_lyrics_hold_start is not None and segments:
+            blank_frame = self.frame_renderer.render_frame_bytes([], [], 0)
+            first = segments[0]
+            opening = next((
+                line for line in lyrics
+                if line.item_id == first.id and has_lyric_content(line.text)
+            ), None)
+            first_hold_end = (
+                opening.global_time_seconds if opening
+                else first.start_time_seconds + first.duration_seconds
+            )
+            first_hold_frame = self.frame_renderer.render_held_lyric(first, opening)
+        if outro_start is not None and segments:
+            last = segments[-1]
+            closing = next((
+                line for line in reversed(lyrics)
+                if line.item_id == last.id and has_lyric_content(line.text)
+            ), None)
+            if closing:
+                outro_hold_start = closing.global_time_seconds
+            outro_frame = self.frame_renderer.render_held_lyric(last, closing)
+
         frame_count = 0
         render_total_ns = 0
         write_total_ns = 0
@@ -435,10 +474,16 @@ class VideoEngine:
 
                 _check_memory_pressure()
 
+                current_time = frame_count / self.fps
                 if title_card_config and frame_count < title_card_frame_count:
                     frame_bytes = title_card_bytes
+                elif outro_hold_start is not None and current_time >= outro_hold_start and outro_frame is not None:
+                    frame_bytes = outro_frame
+                elif first_lyrics_hold_start is not None and current_time < first_lyrics_hold_start:
+                    frame_bytes = blank_frame
+                elif current_time < first_hold_end and first_hold_frame is not None:
+                    frame_bytes = first_hold_frame
                 else:
-                    current_time = frame_count / self.fps
                     t0 = time.monotonic_ns()
                     frame_bytes = self.frame_renderer.render_frame_bytes(
                         lyrics, segments, current_time, glue_windows=glue_windows

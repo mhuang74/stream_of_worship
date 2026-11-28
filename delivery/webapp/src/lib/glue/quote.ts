@@ -8,11 +8,13 @@ import {
   validateSongArrangement,
   type RecordingSection,
 } from "@/lib/arrangements";
-import { buildGlueDescriptor, type GlueBeats } from "@/lib/glue/descriptor";
+import { buildBoundaryDescriptor, buildGlueDescriptor, type GlueBeats } from "@/lib/glue/descriptor";
+import { defaultBoundarySettings, type GlueTarget, type SongsetBoundary, type SongsetBoundarySettings } from "./boundary-types";
 import { buildGlueExcerptKey } from "@/lib/glue/excerpt-key";
 import { canonicalSixDp } from "@/lib/glue/canonical";
 import { readGlueQuota, type GlueQuota } from "@/lib/glue/quota";
 import { db } from "@/db";
+import type { mutationDb } from "@/db/mutation-db";
 import { glueExcerpts, recordings, songsetItems, songsets } from "@/db/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
@@ -32,6 +34,8 @@ export interface GlueResolverItem {
   glueBeats: GlueBeats;
   glueActiveTakeId: string | null;
   updatedAt: string;
+  updatedAtPrecise?: string;
+  boundarySettings?: SongsetBoundarySettings;
   arrangementSteps: string | null;
   recording: {
     contentHash: string | null;
@@ -64,6 +68,7 @@ export interface GlueJunctionReady {
   fromSide: GlueJunctionSide;
   toSide: GlueJunctionSide;
   generationSeconds: number;
+  target?: SongsetBoundary;
 }
 
 export type GlueJunctionDerivation =
@@ -96,6 +101,7 @@ export interface GlueQuoteCore {
 }
 
 export interface GlueQuoteFields extends GlueQuoteCore {
+  target?: SongsetBoundary;
   descriptorKey: string;
   fromItemId: string;
   toItemId: string;
@@ -226,6 +232,58 @@ export function deriveGlueJunction(
   };
 }
 
+export function getGlueTargetItems(
+  items: readonly GlueResolverItem[],
+  target: GlueTarget,
+  fromItemId?: string
+): { from: GlueResolverItem; to: GlueResolverItem | null } | null {
+  if (target === "junction") {
+    const index = items.findIndex((item) => item.itemId === fromItemId);
+    return index < 0 ? null : { from: items[index], to: items[index + 1] ?? null };
+  }
+  const item = target === "intro" ? items[0] : items.at(-1);
+  if (!item || (fromItemId !== undefined && fromItemId !== item.itemId)) return null;
+  const settings = item.boundarySettings?.[target] ?? defaultBoundarySettings;
+  return {
+    from: {
+      ...item,
+      glueEnabled: settings.enabled,
+      glueBeats: settings.beats,
+      glueActiveTakeId: settings.takeId,
+    },
+    to: item,
+  };
+}
+
+export function isBoundaryEligible(item: GlueResolverItem): boolean {
+  return item.arrangementSteps !== null && deriveGlueSide(item).ok;
+}
+
+export function deriveGlueTarget(
+  target: GlueTarget,
+  from: GlueResolverItem,
+  to: GlueResolverItem | null
+): GlueJunctionDerivation {
+  if (target === "junction") return deriveGlueJunction(from, to);
+  if (from.arrangementSteps === null) return { ok: false, reason: "invalid-arrangement" };
+  const side = deriveGlueSide(from);
+  if (!side.ok) return side;
+  const bpm = from.recording?.tempoBpm;
+  if (bpm == null || !Number.isFinite(bpm) || bpm <= 0) {
+    return { ok: false, reason: "no-tempo" };
+  }
+  const descriptor = buildBoundaryDescriptor(target, from.glueBeats, bpm, side.side);
+  return {
+    ok: true,
+    target,
+    descriptorKey: descriptor.key,
+    descriptorJson: descriptor.canonicalJson,
+    fromSide: side.side,
+    toSide: side.side,
+    generationSeconds: Math.round((from.glueBeats * 60_000) / descriptor.descriptor.toTempoBpm) / 1000,
+  };
+}
+
 /** Pure credits + blocked-side calculation from the current cache state. */
 export function computeGlueQuote(
   derivation: GlueJunctionReady,
@@ -242,6 +300,8 @@ export function computeGlueQuote(
     { side: "B", value: derivation.toSide },
   ];
   for (const { side, value } of sides) {
+    if (derivation.target === "intro" && side === "A") continue;
+    if (derivation.target === "outro" && side === "B") continue;
     const excerptKey = buildGlueExcerptKey({
       side,
       seconds: value.excerptSeconds,
@@ -308,17 +368,19 @@ export async function loadExcerptKeySets(
 /** Loads the visible, position-ordered items for one or more owned Songsets. */
 export async function loadGlueItemRows(
   songsetIds: readonly string[],
-  userId: number
+  userId: number,
+  client: typeof db | Parameters<Parameters<typeof mutationDb.transaction>[0]>[0] = db
 ): Promise<Map<string, GlueResolverItem[]>> {
   const result = new Map<string, GlueResolverItem[]>();
   if (songsetIds.length === 0) return result;
 
-  const rows = await db
+  const rows = await client
     .select({
       songsetId: songsetItems.songsetId,
       itemId: songsetItems.id,
       position: songsetItems.position,
       userId: songsets.userId,
+      boundarySettings: songsets.boundarySettings,
       glueEnabled: songsetItems.glueEnabled,
       glueBeats: songsetItems.glueBeats,
       glueActiveTakeId: songsetItems.glueActiveTakeId,
@@ -350,6 +412,7 @@ export async function loadGlueItemRows(
       itemId: row.itemId,
       position: row.position,
       userId: row.userId ?? userId,
+      boundarySettings: row.boundarySettings,
       glueEnabled: row.glueEnabled,
       glueBeats: normalizeGlueBeats(row.glueBeats),
       glueActiveTakeId: row.glueActiveTakeId,
@@ -392,7 +455,8 @@ export function isGpuFallbackEnabled(provider = process.env.SOW_GLUE_PROVIDER): 
 export async function getGlueQuote(args: {
   songsetId: string;
   userId: number;
-  fromItemId: string;
+  fromItemId?: string;
+  target?: GlueTarget;
   takeMode: "initial" | "new-take";
 }): Promise<GlueQuoteFields | null> {
   if (args.takeMode !== "initial" && args.takeMode !== "new-take") {
@@ -400,15 +464,14 @@ export async function getGlueQuote(args: {
   }
   const itemsBySongset = await loadGlueItemRows([args.songsetId], args.userId);
   const items = itemsBySongset.get(args.songsetId) ?? [];
-  const index = items.findIndex((item) => item.itemId === args.fromItemId);
-  if (index < 0) return null;
-
-  const from = items[index];
+  const target = args.target ?? "junction";
+  const inputs = getGlueTargetItems(items, target, args.fromItemId);
+  if (!inputs) return null;
+  const { from, to } = inputs;
   if (!from.glueEnabled) {
     throw new GlueQuoteError("GLUE_NOT_ENABLED", 409, "AI transition is not enabled.");
   }
-  const to = items[index + 1] ?? null;
-  const derivation = deriveGlueJunction(from, to);
+  const derivation = deriveGlueTarget(target, from, to);
   if (!derivation.ok) {
     throw quoteErrorForReason(derivation.reason);
   }
@@ -427,6 +490,7 @@ export async function getGlueQuote(args: {
   const core = computeGlueQuote(derivation, cached, rejected, gpuFallback);
   const quota = await readGlueQuota(args.userId);
   return {
+    ...(target === "junction" ? {} : { target }),
     descriptorKey: derivation.descriptorKey,
     fromItemId: from.itemId,
     toItemId: to!.itemId,

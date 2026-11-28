@@ -10,9 +10,10 @@ import { getGlueQuote, GlueQuoteError } from "@/lib/glue/quote";
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
-  fromItemId: z.string().min(1),
+  target: z.enum(["junction", "intro", "outro"]).optional(),
+  fromItemId: z.string().min(1).optional(),
   takeMode: z.enum(["initial", "new-take"]).default("initial"),
-});
+}).refine((query) => query.target === "intro" || query.target === "outro" || query.fromItemId);
 
 export async function GET(
   request: NextRequest,
@@ -26,6 +27,7 @@ export async function GET(
 
     const parsed = querySchema.safeParse({
       fromItemId: request.nextUrl.searchParams.get("fromItemId") ?? undefined,
+      target: request.nextUrl.searchParams.get("target") ?? undefined,
       takeMode: request.nextUrl.searchParams.get("takeMode") ?? undefined,
     });
     if (!parsed.success) {
@@ -36,10 +38,15 @@ export async function GET(
     }
 
     const { id } = await params;
+    if ((parsed.data.target === "intro" || parsed.data.target === "outro") &&
+        process.env.SOW_SONGSET_BOUNDARIES_ENABLED !== "1") {
+      return NextResponse.json({ code: "GLUE_NOT_CONFIGURED" }, { status: 409 });
+    }
     const quote = await getGlueQuote({
       songsetId: id,
       userId: Number(session.user.id),
       fromItemId: parsed.data.fromItemId,
+      ...(parsed.data.target ? { target: parsed.data.target } : {}),
       takeMode: parsed.data.takeMode,
     });
     if (quote === null) {

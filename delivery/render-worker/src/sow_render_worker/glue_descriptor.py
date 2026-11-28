@@ -24,6 +24,7 @@ DESCRIPTOR_VERSION = 2
 DESCRIPTOR_MODEL = "music_v2_5"
 DESCRIPTOR_PROMPT_VERSION = 2
 DESCRIPTOR_EXCERPT_SECONDS = 12
+BOUNDARY_OUTER_CONTEXT_SECONDS = 2
 GLUE_BEATS_CHOICES = (2, 4, 8, 16)
 
 _MICRO_UNITS = 1_000_000
@@ -99,6 +100,29 @@ def build_descriptor(
     return descriptor, canonical, key
 
 
+def build_boundary_descriptor(
+    *, target: str, beats: int, tempo_bpm: float, recording: Mapping[str, Any]
+) -> tuple[dict[str, Any], str, str]:
+    if target not in ("intro", "outro") or recording.get("steps") is None:
+        raise ValueError("A Songset boundary requires a saved arrangement")
+    from sow_render_worker.simdps_audio import MODEL_ID, STEPS
+
+    descriptor = {
+        "v": 1,
+        "target": target,
+        "model": DESCRIPTOR_MODEL,
+        "promptVersion": 1,
+        "excerptSeconds": DESCRIPTOR_EXCERPT_SECONDS,
+        "simdps": {"model": MODEL_ID, "steps": STEPS,
+                   "outerContextSeconds": BOUNDARY_OUTER_CONTEXT_SECONDS},
+        "beats": _resolve_beats(beats),
+        "toTempoBpm": canonical_six_dp(tempo_bpm),
+        "recording": _resolve_side(recording),
+    }
+    canonical = canonical_json(descriptor)
+    return descriptor, canonical, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _exact_micro_units(value: float) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"canonical number must be numeric, received {type(value).__name__}")
@@ -137,8 +161,8 @@ def milliseconds_to_frames(milliseconds: int) -> int:
     return int(math.floor((milliseconds / 1000.0) * 44100 + 0.5))
 
 
-def generation_duration_ms(beats: int, to_tempo_bpm: float) -> int:
-    """Glue length in beats of the incoming tempo, floored at the API minimum."""
+def generation_duration_ms(beats: int, to_tempo_bpm: float, *, boundary: bool = False) -> int:
+    """Boundary length in beats, with the legacy API minimum for Junctions."""
     if isinstance(beats, bool) or not isinstance(beats, int) or beats <= 0:
         raise ValueError(f"Glue beats must be a positive integer; received {beats!r}")
     if isinstance(to_tempo_bpm, bool) or not isinstance(to_tempo_bpm, (int, float)):
@@ -148,4 +172,5 @@ def generation_duration_ms(beats: int, to_tempo_bpm: float) -> int:
         raise ValueError(f"Glue incoming tempo must be positive; received {to_tempo_bpm!r}")
     # Half-up milliseconds, matching the repository's canonical rounding (never
     # Python's half-even round) so the request is deterministic.
-    return int(math.floor(max(3.0, beats * 60.0 / tempo) * 1000 + 0.5))
+    seconds = beats * 60.0 / tempo
+    return int(math.floor((seconds if boundary else max(3.0, seconds)) * 1000 + 0.5))

@@ -60,11 +60,15 @@ export interface ArrangementTimelineItem {
   glueTakeIdBefore: string | null;
   /** Actual staged seconds of that Glue; null when there is no Glue. */
   glueSecondsBefore: number | null;
-  glueWindowBefore: {
-    takeId: string;
-    startSeconds: number;
-    endSeconds: number;
-  } | null;
+  glueWindowBefore: TimelineGlueWindow | null;
+  glueWindowAfter?: TimelineGlueWindow;
+}
+
+export interface TimelineGlueWindow {
+  takeId: string;
+  startSeconds: number;
+  endSeconds: number;
+  target?: "intro" | "outro";
 }
 
 export interface ArrangementTimeline {
@@ -88,6 +92,8 @@ export interface ArrangementItemInput {
 }
 
 export interface TimelineItemSource extends ArrangementItemInput {
+  intro?: { id: string; seconds: number };
+  outro?: { id: string; seconds: number };
   itemId: string;
   recordingHashPrefix: string | null;
   /** Current parsed analysis (recordings.sections); undefined = caller has none. */
@@ -556,8 +562,12 @@ export function buildArrangementTimeline(
   items: TimelineItemSource[],
 ): ArrangementTimeline {
   const { layouts } = layoutSongsetItems(items);
+  const intro = items[0]?.intro;
+  const outro = items.at(-1)?.outro;
+  const introSeconds = intro?.seconds ?? 0;
   const timelineItems: ArrangementTimelineItem[] = items.map((item, index) => {
     const layout = layouts[index];
+    const startSeconds = layout.startSeconds + introSeconds;
     const durationSeconds = layout.itemDurationSeconds ?? 0;
     const parsed = parseSongArrangement(item.arrangementSteps ?? null);
     const arrangement =
@@ -575,8 +585,8 @@ export function buildArrangementTimeline(
             sectionIndex: step.sectionIndex,
             sourceStartSeconds: step.startSeconds,
             sourceEndSeconds: step.endSeconds,
-            startSeconds: layout.startSeconds + offset,
-            endSeconds: layout.startSeconds + offset + length,
+            startSeconds: startSeconds + offset,
+            endSeconds: startSeconds + offset + length,
           });
           offset += length;
         }
@@ -588,34 +598,48 @@ export function buildArrangementTimeline(
           sectionIndex: -1,
           sourceStartSeconds: 0,
           sourceEndSeconds: sourceDuration,
-          startSeconds: layout.startSeconds,
-          endSeconds: layout.startSeconds + sourceDuration,
+          startSeconds,
+          endSeconds: startSeconds + sourceDuration,
         });
       }
     }
 
+    const glueWindowBefore: TimelineGlueWindow | null = index === 0 && intro
+      ? { takeId: intro.id, startSeconds: 0, endSeconds: introSeconds, target: "intro" }
+      : layout.glueWindowBefore && {
+          ...layout.glueWindowBefore,
+          startSeconds: layout.glueWindowBefore.startSeconds + introSeconds,
+          endSeconds: layout.glueWindowBefore.endSeconds + introSeconds,
+        };
     return {
       itemId: item.itemId,
       recordingHashPrefix: item.recordingHashPrefix,
-      startSeconds: layout.startSeconds,
+      startSeconds,
       durationSeconds,
       gapBeforeSeconds: layout.gapBeforeSeconds,
       crossfadeSeconds: layout.crossfadeSeconds,
       clips,
-      glueTakeIdBefore: layout.glueWindowBefore?.takeId ?? null,
-      glueSecondsBefore: layout.glueWindowBefore
-        ? layout.glueWindowBefore.endSeconds - layout.glueWindowBefore.startSeconds
+      glueTakeIdBefore: glueWindowBefore?.takeId ?? null,
+      glueSecondsBefore: glueWindowBefore
+        ? glueWindowBefore.endSeconds - glueWindowBefore.startSeconds
         : null,
-      glueWindowBefore: layout.glueWindowBefore,
+      glueWindowBefore,
     };
   });
 
-  const lastLayout = layouts[layouts.length - 1];
+  const last = timelineItems.at(-1);
+  const arrangedEnd = timelineItems.reduce(
+    (end, item) => Math.max(end, item.startSeconds + item.durationSeconds), 0
+  );
+  if (last && outro) last.glueWindowAfter = {
+    takeId: outro.id,
+    startSeconds: arrangedEnd,
+    endSeconds: arrangedEnd + outro.seconds,
+    target: "outro",
+  };
   return {
     items: timelineItems,
-    totalSeconds: lastLayout
-      ? lastLayout.startSeconds + (lastLayout.itemDurationSeconds ?? 0)
-      : 0,
+    totalSeconds: arrangedEnd + (outro?.seconds ?? 0),
   };
 }
 

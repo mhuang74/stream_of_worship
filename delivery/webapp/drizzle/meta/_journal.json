@@ -218,6 +218,13 @@
       "when": 1795604100890,
       "tag": "0030_glue_provider_context",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795833210056,
+      "tag": "0031_songset_boundaries",
+      "breakpoints": true
     }
   ]
 }

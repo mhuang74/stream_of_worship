@@ -180,6 +180,7 @@ export async function createRenderJob(
         fontSizePreset: input.fontSizePreset ?? "M",
         fontFamily: input.fontFamily ?? "noto_serif_tc",
         includeTitleCard: input.includeTitleCard ?? false,
+        ...(process.env.SOW_SONGSET_BOUNDARIES_ENABLED === "1" ? { firstLyricsHold: true } : {}),
         titleCardDurationSeconds: input.titleCardDurationSeconds ?? null,
         titleCardLines:
           input.titleCardLines && input.titleCardLines.length > 0
@@ -334,7 +335,8 @@ export async function failRenderJob(
       errorMessage,
       updatedAt: now,
     })
-    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
+    // Dispatch can fail after a REST worker has already started or finished.
+    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId), eq(renderJobs.status, "queued")))
     .returning();
 
   if (!updated) return null;

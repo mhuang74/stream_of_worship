@@ -288,12 +288,12 @@ describe("eligible take ordinal and seed", () => {
     expect(nextTakeOrdinal(3, 3)).toBe(4);
   });
 
-  it("generates a 32-bit seed", () => {
+  it("generates a nonnegative signed 32-bit seed", () => {
     for (let i = 0; i < 20; i += 1) {
       const seed = randomGlueSeed();
       expect(Number.isInteger(seed)).toBe(true);
       expect(seed).toBeGreaterThanOrEqual(0);
-      expect(seed).toBeLessThanOrEqual(0xffffffff);
+      expect(seed).toBeLessThanOrEqual(0x7fffffff);
     }
   });
 });

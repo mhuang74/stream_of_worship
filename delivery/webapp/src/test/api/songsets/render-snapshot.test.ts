@@ -221,7 +221,10 @@ describe("createRenderJob frozen AI-transition snapshot", () => {
   });
 
   it("writes the exact ordered snapshot JSON with frozen field names", async () => {
-    installTransaction([[itemRow("item-a", 0), itemRow("item-b", 1)], [takeRow()], []]);
+    installTransaction([[
+      itemRow("item-a", 0, { updatedAtPrecise: "2026-11-22T10:00:00.000099Z" }),
+      itemRow("item-b", 1, { updatedAtPrecise: "2026-11-22T10:01:00.000000Z" }),
+    ], [takeRow()], []]);
     mockResolve.mockReturnValue([readyJunction(TAKE_A, R2_A, 2.786)]);
 
     await createRenderJob(1, { songsetId: "songset-1" });
@@ -230,9 +233,9 @@ describe("createRenderJob frozen AI-transition snapshot", () => {
       JSON.stringify([
         {
           from_item_id: "item-a",
-          from_updated_at: "2026-11-22T10:00:00.000Z",
+          from_updated_at: "2026-11-22T10:00:00.000099Z",
           to_item_id: "item-b",
-          to_updated_at: "2026-11-22T10:01:00.000Z",
+          to_updated_at: "2026-11-22T10:01:00.000000Z",
           take_id: TAKE_A,
           descriptor_key: DESCRIPTOR_KEY,
           r2_key: R2_A,

@@ -13,6 +13,7 @@ import { db } from "@/db";
 import { renderJobs } from "@/db/schema";
 import { eq, and, or, gte } from "drizzle-orm";
 import { z } from "zod";
+import { arrangedVideoLeadIn } from "@/lib/render/opening-timing";
 
 const createRenderJobSchema = z.object({
   songsetId: z.string().min(1),
@@ -118,7 +119,8 @@ export async function POST(request: NextRequest) {
 
     if (
       metrics.songsetDurationSeconds != null &&
-      metrics.songsetDurationSeconds > SONGSET_MAX_DURATION_SECONDS
+      metrics.songsetDurationSeconds + arrangedVideoLeadIn(metrics, parsed.data) >
+        SONGSET_MAX_DURATION_SECONDS
     ) {
       return NextResponse.json(
         { error: `Songset exceeds maximum duration of ${Math.floor(SONGSET_MAX_DURATION_SECONDS / 60)} minutes` },

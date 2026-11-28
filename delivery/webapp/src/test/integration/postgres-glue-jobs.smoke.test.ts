@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePostgresSmokeDb, db, schema } from "@/db";
 import { deleteSongset, deleteSongsetItem } from "@/lib/db/songsets";
 import { glueJobRepository } from "@/lib/glue/jobs";
 import { readGlueQuota } from "@/lib/glue/quota";
+import { getGlueQuote } from "@/lib/glue/quote";
+import { loadSongsetBoundaries, updateSongsetBoundary } from "@/lib/glue/boundaries";
+import { createRenderGlueSnapshot } from "@/lib/db/songsets";
+import { preciseTimestamp } from "@/lib/db/timestamps";
 
 vi.mock("@/db/mutation-db", async () => ({ mutationDb: (await import("@/db")).db }));
 
@@ -93,6 +97,69 @@ async function insertFailedJob(takeOrdinal: number) {
 }
 
 describe("Glue jobs on Postgres", () => {
+  it("pins a boundary take and preserves its job when the boundary item is deleted", async () => {
+    const hash = randomUUID();
+    await db.insert(schema.recordings).values({
+      contentHash: hash, hashPrefix: hash, songId, originalFilename: "test.mp3",
+      fileSizeBytes: 100, importedAt: now.toISOString(), durationSeconds: 12,
+      tempoBpm: 120, beats: "[0,0.5,1,11.5]", sections: '[{"label":"Verse","start":0,"end":12}]',
+    });
+    try {
+      await db.update(schema.songsetItems).set({
+        recordingHashPrefix: hash,
+        updatedAt: sql`${now.toISOString()}::timestamptz + interval '99 microseconds'`,
+        arrangementSteps: JSON.stringify({
+          version: 1,
+          steps: [{ sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 12, manualBounds: true }],
+        }),
+      }).where(eq(schema.songsetItems.id, fromItemId));
+      expect(await updateSongsetBoundary(songsetId, userId, "intro", { enabled: true })).toBe("saved");
+      const quote = await getGlueQuote({ songsetId, userId, target: "intro", takeMode: "new-take" });
+      expect(quote).toMatchObject({ fromItemId, toItemId: fromItemId, generationSeconds: 4 });
+      const [{ boundarySettings }] = await db.select().from(schema.songsets)
+        .where(eq(schema.songsets.id, songsetId));
+      const [boundary] = await loadSongsetBoundaries(songsetId, userId, boundarySettings);
+      const input = jobInput();
+      const descriptorJson = JSON.stringify({
+        v: 1, target: "intro", model: "music_v2_5", promptVersion: 1, excerptSeconds: 12,
+        simdps: { model: "acestep-v15-base", steps: 100, outerContextSeconds: 2 },
+        beats: 8, toTempoBpm: 120, recording: { contentHash: hash, steps: [[0, 12]] },
+      });
+      expect(await glueJobRepository.createJobAtomically({
+        ...input, target: "intro", toItemId: fromItemId, descriptorKey: quote!.descriptorKey, descriptorJson,
+      })).toMatchObject({ kind: "created", job: { target: "intro", boundaryItemId: fromItemId } });
+      const [stored] = await db.select({
+        expected: preciseTimestamp(schema.glueJobs.expectedFromUpdatedAt),
+      }).from(schema.glueJobs).where(eq(schema.glueJobs.id, input.jobId));
+      expect(stored.expected).toBe("2026-11-23T00:00:00.000099Z");
+      expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
+        .toMatchObject({ preflight: { glues: [{ target: "intro" }] }, snapshot: [] });
+      const takeId = randomUUID();
+      await db.insert(schema.glueTakes).values({
+        id: takeId, userId, descriptorKey: boundary.descriptorKey!, descriptorJson, ordinal: 1,
+        seed: 123, status: "ready", r2Key: "glues/ready.wav", seconds: 4,
+        metricsJson: JSON.stringify({ audioSha256: "a".repeat(64) }),
+      });
+      await db.update(schema.glueJobs).set({ active: false, phase: "ready" })
+        .where(eq(schema.glueJobs.id, input.jobId));
+      expect(await updateSongsetBoundary(songsetId, userId, "intro", { takeId })).toBe("saved");
+      expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
+        .toMatchObject({
+          preflight: null,
+          snapshot: [{
+            target: "intro", take_id: takeId, seconds: 4,
+            from_updated_at: stored.expected, to_updated_at: stored.expected,
+          }],
+        });
+      expect(await deleteSongsetItem(fromItemId, songsetId, userId)).toBe(true);
+      expect(await glueJobRepository.findJob(input.jobId, userId)).toMatchObject({ target: "intro" });
+      expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
+        .toEqual({ preflight: null, snapshot: [] });
+    } finally {
+      await db.delete(schema.recordings).where(eq(schema.recordings.contentHash, hash));
+    }
+  });
+
   it("clears a recent heartbeat when re-queuing a free failure", async () => {
     const jobId = await insertFailedJob(1);
     const attemptId = randomUUID();

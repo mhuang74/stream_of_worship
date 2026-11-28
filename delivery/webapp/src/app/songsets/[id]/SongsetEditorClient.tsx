@@ -7,7 +7,9 @@ import { SongsetEditor } from "@/components/songset/SongsetEditor";
 import { SongCardData } from "@/components/songset/SongCard";
 import { SongListItem } from "@/components/songset/SongList";
 import type { SongArrangement, RecordingSection, ArrangementItemInput } from "@/lib/arrangements";
-import type { ResolvedGlueJunction } from "@/lib/glue/resolve";
+import type { ResolvedGlueJunction, ResolvedSongsetBoundary } from "@/lib/glue/resolve";
+import type { BoundarySettings, SongsetBoundary } from "@/lib/glue/boundary-types";
+import { SongsetBoundaryPanel } from "@/components/songset/SongsetBoundaryPanel";
 import { glueForAdjacency } from "@/lib/glue/draft";
 import {
   buildSnappedSteps,
@@ -114,6 +116,7 @@ interface ApiSongsetItem {
 }
 
 interface ApiResponse {
+  boundaries?: ResolvedSongsetBoundary[];
   id: string;
   name: string;
   description: string | null;
@@ -135,6 +138,7 @@ interface ApiResponse {
 interface SongsetEditorClientProps {
   songsetId: string;
   initialData: ApiResponse;
+  enableSongsetBoundaries?: boolean;
 }
 
 /** Arrangement input shape shared with the canonical duration helpers. */
@@ -354,7 +358,7 @@ function applySavedArrangement(
   };
 }
 
-export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorClientProps) {
+export function SongsetEditorClient({ songsetId, initialData, enableSongsetBoundaries = false }: SongsetEditorClientProps) {
   const router = useRouter();
   const backToList = useSongsetListBack();
   const { t } = useLocale();
@@ -387,6 +391,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     latestRenderJobEstimatedTotalSeconds: initialData.latestRenderJobEstimatedTotalSeconds,
   }));
   const [items, setItems] = useState<SongListItem[]>(() => initialData.items.map(toSongListItem));
+  const [boundaries, setBoundaries] = useState(initialData.boundaries ?? []);
   // Offline index record (client-only): cached ⇒ offline-copy play entry.
   const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
   useEffect(() => {
@@ -726,6 +731,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     if (!response.ok) throw new Error("Songset refresh failed");
     const authoritative: ApiResponse = await response.json();
     commitItems(authoritative.items.map(toSongListItem));
+    setBoundaries(authoritative.boundaries ?? []);
     setSongset((prev) =>
       prev
         ? {
@@ -733,10 +739,14 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
             itemCount: authoritative.itemCount,
             durationSeconds: authoritative.durationSeconds,
             updatedAt: authoritative.updatedAt,
+            ...(enableSongsetBoundaries ? {
+              renderState: authoritative.renderState,
+              isArtifactsStale: authoritative.renderState === "stale",
+            } : {}),
           }
         : prev
     );
-  }, [commitItems, songsetId]);
+  }, [commitItems, enableSongsetBoundaries, songsetId]);
 
   const refreshItemLayout = useCallback(async () => {
     const reportRefreshFailure = () =>
@@ -750,6 +760,31 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
       });
     await readItemLayout().catch(reportRefreshFailure);
   }, [readItemLayout, runItemMutation, t]);
+
+  const updateBoundary = useCallback(async (target: SongsetBoundary, patch: Partial<BoundarySettings>) => {
+    await runItemMutation(async () => {
+      const response = await fetch(`/api/songsets/${songsetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boundary: { target, ...patch } }),
+      });
+      if (!response.ok) throw new Error("Boundary update failed");
+      const authoritative: ApiResponse = await response.json();
+      commitItems(authoritative.items.map(toSongListItem));
+      setBoundaries(authoritative.boundaries ?? []);
+      setSongset((previous) => previous && {
+        ...previous,
+        updatedAt: authoritative.updatedAt,
+        durationSeconds: authoritative.durationSeconds,
+        renderState: authoritative.renderState,
+        isArtifactsStale: authoritative.renderState === "stale",
+      });
+    });
+  }, [commitItems, runItemMutation, songsetId]);
+
+  const refreshBoundaries = useCallback(
+    () => runItemMutation(refreshItemLayout), [runItemMutation, refreshItemLayout]
+  );
 
   // Handle item reorder (optimistic)
   const handleUpdateItems = useCallback(
@@ -786,10 +821,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           clearTimeout(timeoutId);
         }
         markStale();
-        if (previousItems.some((item) => item.glueEnabled)) await refreshItemLayout();
+        if (enableSongsetBoundaries || previousItems.some((item) => item.glueEnabled)) await refreshItemLayout();
       });
     },
-    [commitItemLayout, runItemMutation, songsetId, markStale, refreshItemLayout, t]
+    [commitItemLayout, enableSongsetBoundaries, runItemMutation, songsetId, markStale, refreshItemLayout, t]
   );
 
   // Handle item removal
@@ -832,7 +867,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           }
 
           touchUpdatedAt();
-          if (currentItems.some((item) => item.glueEnabled)) await refreshItemLayout();
+          if (enableSongsetBoundaries || currentItems.some((item) => item.glueEnabled)) await refreshItemLayout();
         } catch {
           if (hadItem) {
             commitItemLayout(currentItems);
@@ -856,6 +891,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
     [
       commitItemLayout,
       refreshItemLayout,
+      enableSongsetBoundaries,
       runItemMutation,
       songsetId,
       isRemoving,
@@ -1071,7 +1107,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         });
         commitItemLayout(applyItemWriteDetail(nextItems, savedItemId, detail));
         markStale();
-        if (needsGlueRefresh) await refreshItemLayout();
+        if (needsGlueRefresh || (enableSongsetBoundaries && arrangementChanged)) await refreshItemLayout();
       });
       toast.success(
         arrangement === null
@@ -1079,7 +1115,7 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
           : t("arrangement.toast.saved")
       );
     },
-    [commitItemLayout, editingArrangementItemId, markStale, refreshItemLayout, runItemMutation, songsetId, t]
+    [commitItemLayout, editingArrangementItemId, enableSongsetBoundaries, markStale, refreshItemLayout, runItemMutation, songsetId, t]
   );
 
   // Handle render
@@ -1273,10 +1309,10 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         const nextItems = [...itemsRef.current, toSongListItem(item)];
         commitItemLayout(nextItems);
         markStale();
-        if (nextItems.some((entry) => entry.glueEnabled)) await refreshItemLayout();
+        if (enableSongsetBoundaries || nextItems.some((entry) => entry.glueEnabled)) await refreshItemLayout();
       });
     },
-    [commitItemLayout, isSongsetFull, markStale, refreshItemLayout, runItemMutation, songsetId, t]
+    [commitItemLayout, enableSongsetBoundaries, isSongsetFull, markStale, refreshItemLayout, runItemMutation, songsetId, t]
   );
 
   const editingArrangementItem = editingArrangementItemId
@@ -1333,6 +1369,24 @@ export function SongsetEditorClient({ songsetId, initialData }: SongsetEditorCli
         highlightSongId={highlightSongId}
         onHighlightConsumed={() => setHighlightSongId(null)}
         isOfflineAvailable={isOfflineAvailable}
+        aiTransitionsSlot={enableSongsetBoundaries ? (
+          <SongsetBoundaryPanel
+            songsetId={songsetId}
+            boundaries={boundaries}
+            sources={items.map((item) => ({
+              itemId: item.id,
+              recordingHashPrefix: item.recording?.hashPrefix || null,
+              arrangementSteps: item.arrangementSteps,
+              recordingDurationSeconds: item.recording?.durationSeconds,
+              recordingSections: item.recording?.sections,
+              recordingBeats: item.recording?.beats,
+              tempoBpm: item.recording?.tempoBpm,
+            }))}
+            disabled={isItemMutationPending || connectivity !== "online"}
+            onSave={updateBoundary}
+            onRefresh={refreshBoundaries}
+          />
+        ) : null}
         offlineStatusSlot={
           songset && renderJobR2Keys ? (
             <div className="px-4 pt-3">

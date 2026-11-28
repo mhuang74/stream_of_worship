@@ -288,6 +288,15 @@ Because both are `NEXT_PUBLIC_*` and baked at build time, set them **before** th
 preview build runs — after adding them, trigger a fresh deploy (push a commit or
 use `vercel` from the package directory).
 
+#### Songset Intro and Outro
+
+Apply migration `0031_songset_boundaries` to the database used by Preview. Deploy
+the compatible render and Glue worker images to the queues that Preview uses.
+Set `SOW_GLUE_PROVIDER=cascade`, `SOW_GLUE_SQS_QUEUE_URL`,
+`SOW_GLUE_AWS_REGION`, and `SOW_SONGSET_BOUNDARIES_ENABLED=1` for the preview
+branch, then deploy it. The feature switch also enables the first-lyrics hold
+on new lyrics-video requests.
+
 Production keeps its own values untouched: these overrides live only at Preview
 scope, so `main` deploys continue using the Production-scoped settings. Vercel
 also supports **branch-scoped** Preview values that override generic Preview ones

@@ -3,6 +3,7 @@
 // and classifies failures. It never computes or fabricates a percentage.
 
 import type { GlueQuota } from "@/lib/glue/quota";
+import type { SongsetBoundary } from "./boundary-types";
 
 export type { GlueQuota };
 
@@ -22,6 +23,7 @@ export function isGlueTerminalPhase(phase: string): boolean {
 
 /** Identical shape to the server route serialization. */
 export interface GlueJobStatus {
+  target?: SongsetBoundary;
   id: string;
   songsetId: string;
   fromItemId: string;
@@ -45,6 +47,7 @@ export interface GlueJobStatus {
 }
 
 export interface ActiveGlueJobsPayload {
+  latestByBoundary?: Partial<Record<SongsetBoundary, GlueJobStatus>>;
   active: GlueJobStatus[];
   latestByFromItemId: Record<string, GlueJobStatus>;
 }
@@ -63,6 +66,8 @@ export type GlueApiResult<T> =
   | { ok: false; error: GlueApiError };
 
 export interface CreateGlueJobRequest {
+  target?: SongsetBoundary;
+  expectedDescriptorKey?: string;
   fromItemId: string;
   clientRequestId: string;
   expectedFromUpdatedAt: string;
@@ -194,6 +199,7 @@ export interface GlueJobWatchOptions {
   songsetId: string;
   /** Discovery maps a job back to its Junction through this id. */
   fromItemId: string;
+  target?: SongsetBoundary;
 }
 
 export interface GlueJobWatchHandlers {
@@ -257,11 +263,11 @@ export function watchGlueJob(
       return null;
     }
     handlers.onDiscovery?.(result.data);
-    return (
-      result.data.active.find((job) => job.id === options.jobId) ??
-      result.data.latestByFromItemId[options.fromItemId] ??
-      null
-    );
+    const latest = options.target
+      ? result.data.latestByBoundary?.[options.target]
+      : result.data.latestByFromItemId[options.fromItemId];
+    return result.data.active.find((job) => job.id === options.jobId) ??
+      (latest?.id === options.jobId ? latest : null);
   };
 
   const scheduleReconnect = () => {

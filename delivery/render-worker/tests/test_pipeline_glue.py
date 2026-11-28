@@ -267,6 +267,16 @@ class TestSnapshotItemIdentity:
         )
         assert clips["item-2"].take_id == "take-1"
 
+    def test_legacy_millisecond_snapshot_matches_a_postgres_timestamp(self):
+        take = _take()
+        actual = UPDATED_AT + timedelta(microseconds=99)
+        clips, _ = _load(
+            transitions=[_entry(take, from_updated_at=UPDATED_AT.isoformat(timespec="milliseconds"))],
+            takes=[take],
+            items=[_item("item-1", 0, updated_at=actual), _item("item-2", 1)],
+        )
+        assert clips["item-2"].take_id == take.id
+
     def test_from_item_updated_after_snapshot_is_stale(self):
         take = _take()
         moved = (UPDATED_AT + timedelta(seconds=1)).isoformat()

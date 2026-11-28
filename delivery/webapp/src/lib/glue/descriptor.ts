@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { canonicalJson, canonicalSixDp, type CanonicalObject } from "@/lib/glue/canonical";
+import type { SongsetBoundary } from "./boundary-types";
 
 // Canonical Glue descriptor identity (spec:
 // specs/inpaint-transition-elevenlabs-v2.md §2.2). The Python mirror at
@@ -77,6 +78,31 @@ export function buildGlueDescriptor(input: GlueDescriptorInput): GlueDescriptorB
 
 export function glueDescriptorKey(input: GlueDescriptorInput): string {
   return buildGlueDescriptor(input).key;
+}
+
+export function buildBoundaryDescriptor(
+  target: SongsetBoundary,
+  beats: GlueBeats,
+  tempoBpm: number,
+  recording: GlueDescriptorSideInput
+) {
+  const descriptor = {
+    v: 1,
+    target,
+    model: DESCRIPTOR_MODEL,
+    promptVersion: 1,
+    excerptSeconds: DESCRIPTOR_EXCERPT_SECONDS,
+    simdps: { model: "acestep-v15-base", steps: 100, outerContextSeconds: 2 },
+    beats: resolveBeats(beats),
+    toTempoBpm: canonicalSixDp(tempoBpm),
+    recording: resolveSide(recording),
+  };
+  const canonical = canonicalJson(descriptor);
+  return {
+    descriptor,
+    canonicalJson: canonical,
+    key: createHash("sha256").update(canonical, "utf8").digest("hex"),
+  };
 }
 
 function resolveBeats(beats: GlueBeats): GlueBeats {

@@ -6,6 +6,14 @@ import { z } from "zod";
 const updateSongsetSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).optional(),
+  boundary: z.object({
+    target: z.enum(["intro", "outro"]),
+    enabled: z.boolean().optional(),
+    beats: z.union([z.literal(2), z.literal(4), z.literal(8), z.literal(16)]).optional(),
+    takeId: z.string().uuid().optional(),
+  }).strict().refine(({ enabled, beats, takeId }) =>
+    takeId ? enabled === undefined && beats === undefined : enabled !== undefined || beats !== undefined
+  ).optional(),
 });
 
 export async function GET(
@@ -68,6 +76,21 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    if (parsed.data.boundary) {
+      const { target, ...patch } = parsed.data.boundary;
+      if (process.env.SOW_SONGSET_BOUNDARIES_ENABLED !== "1" && patch.enabled !== false) {
+        return NextResponse.json({ code: "GLUE_NOT_CONFIGURED" }, { status: 409 });
+      }
+      const { updateSongsetBoundary } = await import("@/lib/glue/boundaries");
+      const result = await updateSongsetBoundary(id, Number(session.user.id), target, patch);
+      if (result === "not-found") return NextResponse.json({ error: "Songset not found" }, { status: 404 });
+      if (result === "stale") {
+        return NextResponse.json({ code: "GLUE_STALE_SNAPSHOT", error: "The saved boundary changed." }, { status: 409 });
+      }
+      return NextResponse.json(await getSongsetEditorData(id, Number(session.user.id)), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     const songset = await updateSongset(id, Number(session.user.id), parsed.data);
 
     if (!songset) {
