@@ -44,6 +44,7 @@ const R2_KEY = fixture.glue[0].r2Key;
 const STAGED_SECONDS = fixture.glue[0].stagedSeconds;
 const FROM_UPDATED_AT = "2026-11-22T10:00:00.000Z";
 const TO_UPDATED_AT = "2026-11-22T10:01:00.000Z";
+const PRECISE_UPDATED_AT = ["2026-11-22T10:00:00.000099Z", "2026-11-22T10:01:00.000000Z"];
 
 const API_KEY_AT_LOAD = process.env.SOW_ELEVENLABS_API_KEY;
 const fetchSpy = vi.fn(() => {
@@ -449,6 +450,7 @@ describe("AI transition journey over the Traditional Chinese fixture", () => {
       position: source.position,
       title: source.title,
       updatedAt: new Date(source.position === 0 ? FROM_UPDATED_AT : TO_UPDATED_AT),
+      updatedAtPrecise: PRECISE_UPDATED_AT[source.position],
       glueEnabled: true,
       glueBeats: 4,
       glueActiveTakeId: source.position === 0 ? TAKE_ID : null,
@@ -505,9 +507,9 @@ describe("AI transition journey over the Traditional Chinese fixture", () => {
     ]);
     expect(entry).toEqual({
       from_item_id: fixture.songs[0].itemId,
-      from_updated_at: FROM_UPDATED_AT,
+      from_updated_at: PRECISE_UPDATED_AT[0],
       to_item_id: fixture.songs[1].itemId,
-      to_updated_at: TO_UPDATED_AT,
+      to_updated_at: PRECISE_UPDATED_AT[1],
       take_id: TAKE_ID,
       descriptor_key: DESCRIPTOR_KEY,
       r2_key: R2_KEY,
