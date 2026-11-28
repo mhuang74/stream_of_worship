@@ -955,6 +955,26 @@ describe("ControllerPlayer", () => {
 
   // ── Current-song time context row ───────────────────────────────────────
   describe("current-song time context row", () => {
+    it("shows the first chapter again when seeking back into the Intro", async () => {
+      const chapters = defaultProps.chapters.map((chapter) => ({
+        ...chapter, startSeconds: chapter.startSeconds + 7, endSeconds: chapter.endSeconds + 7,
+      }));
+      await act(async () => {
+        render(<ControllerPlayer {...defaultProps} chapters={chapters} />);
+      });
+      const video = document.querySelector("video") as HTMLVideoElement;
+      await act(async () => {
+        video.currentTime = chapters[1].startSeconds + 1;
+        fireEvent.timeUpdate(video);
+      });
+      expect(screen.getByTestId("song-time-row")).toHaveTextContent(chapters[1].songTitle);
+      await act(async () => {
+        video.currentTime = 3;
+        fireEvent.timeUpdate(video);
+      });
+      expect(screen.getByTestId("song-time-row")).toHaveTextContent(chapters[0].songTitle);
+    });
+
     it("is hidden before playback starts", async () => {
       await act(async () => {
         render(<ControllerPlayer {...defaultProps} />);

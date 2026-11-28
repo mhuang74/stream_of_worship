@@ -6,6 +6,7 @@ import { and, asc, desc, eq, gte, gt, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { mutationDb } from "@/db/mutation-db";
+import { preciseTimestamp } from "@/lib/db/timestamps";
 import {
   glueJobs,
   gluePaidAttempts,
@@ -407,9 +408,9 @@ export function evaluateGlueResume(job: {
   };
 }
 
-/** Cryptographically random 32-bit seed (spec §2.2). */
+/** Cryptographically random nonnegative signed 32-bit seed accepted by each provider. */
 export function randomGlueSeed(): number {
-  return randomBytes(4).readUInt32BE(0);
+  return randomBytes(4).readUInt32BE(0) & 0x7fffffff;
 }
 
 function buildResolverItem(row: {
@@ -552,6 +553,7 @@ export const glueJobRepository: GlueJobRepository = {
               glueBeats: songsetItems.glueBeats,
               glueActiveTakeId: songsetItems.glueActiveTakeId,
               updatedAt: songsetItems.updatedAt,
+              updatedAtPrecise: preciseTimestamp(songsetItems.updatedAt),
               arrangementSteps: songsetItems.arrangementSteps,
               contentHash: recordings.contentHash,
               durationSeconds: recordings.durationSeconds,
@@ -575,7 +577,11 @@ export const glueJobRepository: GlueJobRepository = {
             .orderBy(asc(songsetItems.position));
           const items = snapshotRows
             .filter((row) => row.recordingDeletedAt === null)
-            .map((row) => ({ ...buildResolverItem(row), boundarySettings: row.boundarySettings }));
+            .map((row) => ({
+              ...buildResolverItem(row),
+              updatedAtPrecise: row.updatedAtPrecise,
+              boundarySettings: row.boundarySettings,
+            }));
           const target = input.target ?? "junction";
           const inputs = getGlueTargetItems(items, target, input.fromItemId);
           if (!inputs?.to || inputs.to.itemId !== input.toItemId) {
@@ -636,8 +642,8 @@ export const glueJobRepository: GlueJobRepository = {
               takeMode: input.takeMode,
               descriptorKey: input.descriptorKey,
               descriptorJson: input.descriptorJson,
-              expectedFromUpdatedAt: input.expectedFromUpdatedAt,
-              expectedToUpdatedAt: input.expectedToUpdatedAt,
+              expectedFromUpdatedAt: sql`${from.updatedAtPrecise}::timestamptz`,
+              expectedToUpdatedAt: sql`${to!.updatedAtPrecise}::timestamptz`,
               phase: "queued",
               active: true,
               dispatchState: "pending",

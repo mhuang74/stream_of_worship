@@ -31,6 +31,7 @@ from sow_render_worker.glue_provider import (
     ProviderPlan,
     ProviderResponseTooLarge,
     build_compose_request,
+    build_boundary_compose_request,
     create_provider_stage,
     generation_duration_ms,
 )
@@ -310,6 +311,17 @@ def _run_stage(
 
 
 class TestComposeRequest:
+    def test_legacy_unsigned_seed_fits_elevenlabs_for_junctions_and_boundaries(self):
+        seed = 4066343433
+        junction = build_compose_request(
+            seed=seed, beats=4, to_tempo_bpm=100,
+            a_song_id="song-a", a_ref_ms=12000, b_song_id="song-b", b_ref_ms=12000,
+        )
+        intro = build_boundary_compose_request(
+            target="intro", seed=seed, duration_ms=2400, song_id="song-b", reference_ms=12000,
+        )
+        assert junction["seed"] == intro["seed"] == seed - 2**31
+
     def test_exact_pinned_payload(self):
         request = build_compose_request(
             seed=123456789,

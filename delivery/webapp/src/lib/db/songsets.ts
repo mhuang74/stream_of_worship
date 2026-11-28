@@ -56,6 +56,7 @@ import {
 } from "@/lib/arrangements";
 import { sanitizeRenderErrorMessage } from "@/lib/render/error-message";
 import { getEffectiveKey, type EffectiveKey } from "@/lib/music/effective-key";
+import { preciseTimestamp } from "@/lib/db/timestamps";
 
 export type RenderState = "unrendered" | "rendering" | "fresh" | "stale" | "failed";
 
@@ -2515,6 +2516,7 @@ export async function createRenderGlueSnapshot(
       title: songs.title,
       boundarySettings: songsets.boundarySettings,
       updatedAt: songsetItems.updatedAt,
+      updatedAtPrecise: preciseTimestamp(songsetItems.updatedAt),
       glueEnabled: songsetItems.glueEnabled,
       glueBeats: songsetItems.glueBeats,
       glueActiveTakeId: songsetItems.glueActiveTakeId,
@@ -2665,9 +2667,9 @@ export async function createRenderGlueSnapshot(
     snapshot.push({
       ...(junction.target ? { target: junction.target } : {}),
       from_item_id: junction.fromItemId,
-      from_updated_at: fromRow.updatedAt.toISOString(),
+      from_updated_at: fromRow.updatedAtPrecise,
       to_item_id: junction.toItemId,
-      to_updated_at: toRow.updatedAt.toISOString(),
+      to_updated_at: toRow.updatedAtPrecise,
       take_id: take.id,
       descriptor_key: descriptorKey,
       r2_key: take.r2Key,

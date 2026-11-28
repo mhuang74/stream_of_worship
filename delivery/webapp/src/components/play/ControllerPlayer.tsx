@@ -334,7 +334,7 @@ export function ControllerPlayer({
           t >= chapter.startSeconds &&
           (i === chapters.length - 1 || t < chapters[i + 1].startSeconds)
       );
-      if (idx !== -1) return { index: idx, fromPlayback: true };
+      return { index: Math.max(0, idx), fromPlayback: idx !== -1 };
     }
     return { index: localSongIndex, fromPlayback: false };
   }, [isRemotePlaybackActive, effectiveCurrentTime, chapters, localSongIndex]);
@@ -437,13 +437,14 @@ export function ControllerPlayer({
       setCurrentTime(media.currentTime);
 
       // Update current song index based on time
-      const newIndex = chapters.findIndex(
+      const chapterIndex = chapters.findIndex(
         (chapter, i) =>
           media.currentTime >= chapter.startSeconds &&
           (i === chapters.length - 1 ||
             media.currentTime < chapters[i + 1].startSeconds)
       );
-      if (newIndex !== -1 && newIndex !== currentSongIndex) {
+      const newIndex = Math.max(0, chapterIndex);
+      if (newIndex !== currentSongIndex) {
         setLocalSongIndex(newIndex);
       }
     };

@@ -34,6 +34,7 @@ export interface GlueResolverItem {
   glueBeats: GlueBeats;
   glueActiveTakeId: string | null;
   updatedAt: string;
+  updatedAtPrecise?: string;
   boundarySettings?: SongsetBoundarySettings;
   arrangementSteps: string | null;
   recording: {

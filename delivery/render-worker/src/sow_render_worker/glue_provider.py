@@ -437,6 +437,11 @@ def _error_for_response(status: int, body: str, operation: str) -> GlueProviderE
 # ---------------------------------------------------------------------------
 
 
+def _elevenlabs_seed(seed: int) -> int:
+    # Jobs queued by older webapp bundles can still carry unsigned seeds.
+    return int(seed) & 0x7FFF_FFFF
+
+
 def build_compose_request(
     *,
     seed: int,
@@ -468,7 +473,7 @@ def build_compose_request(
 
     return {
         "model_id": MODEL_ID,
-        "seed": int(seed),
+        "seed": _elevenlabs_seed(seed),
         "composition_plan": {
             "chunks": [
                 {
@@ -519,7 +524,7 @@ def build_boundary_compose_request(
         "condition_strength": CONDITION_STRENGTH,
     }
     chunks = [generated, retained] if target == "intro" else [retained, generated]
-    return {"model_id": MODEL_ID, "seed": int(seed), "composition_plan": {"chunks": chunks}}
+    return {"model_id": MODEL_ID, "seed": _elevenlabs_seed(seed), "composition_plan": {"chunks": chunks}}
 
 
 # ---------------------------------------------------------------------------

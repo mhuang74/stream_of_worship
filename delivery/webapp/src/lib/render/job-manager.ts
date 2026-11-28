@@ -335,7 +335,8 @@ export async function failRenderJob(
       errorMessage,
       updatedAt: now,
     })
-    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId)))
+    // Dispatch can fail after a REST worker has already started or finished.
+    .where(and(eq(renderJobs.id, id), eq(renderJobs.userId, userId), eq(renderJobs.status, "queued")))
     .returning();
 
   if (!updated) return null;

@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import re
 import signal
 import time
 from datetime import datetime, timezone
@@ -423,7 +424,8 @@ def _validate_snapshot_item_identity(
         ("to", "to_updated_at", to_item),
     )
     for side, field, item in sides:
-        expected = _parse_snapshot_timestamp(entry.get(field))
+        serialized = entry.get(field)
+        expected = _parse_snapshot_timestamp(serialized)
         actual = item.updated_at
         if expected is None or not isinstance(actual, datetime):
             raise _glue_failure(
@@ -434,6 +436,9 @@ def _validate_snapshot_item_identity(
                 take_id=take_id,
                 detail=f"{side} item identity is unverifiable ({field} missing or invalid)",
             )
+        if re.search(r"\.\d{3}(?:Z|[+-]\d{2}:\d{2})$", serialized):
+            # Previous web builds read the timestamp through JavaScript Date.
+            actual = actual.replace(microsecond=actual.microsecond // 1000 * 1000)
         if not _timestamps_match(expected, actual):
             raise _glue_failure(
                 job_id,

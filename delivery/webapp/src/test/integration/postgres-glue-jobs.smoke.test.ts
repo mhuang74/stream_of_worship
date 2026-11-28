@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePostgresSmokeDb, db, schema } from "@/db";
 import { deleteSongset, deleteSongsetItem } from "@/lib/db/songsets";
@@ -8,6 +8,7 @@ import { readGlueQuota } from "@/lib/glue/quota";
 import { getGlueQuote } from "@/lib/glue/quote";
 import { loadSongsetBoundaries, updateSongsetBoundary } from "@/lib/glue/boundaries";
 import { createRenderGlueSnapshot } from "@/lib/db/songsets";
+import { preciseTimestamp } from "@/lib/db/timestamps";
 
 vi.mock("@/db/mutation-db", async () => ({ mutationDb: (await import("@/db")).db }));
 
@@ -106,7 +107,7 @@ describe("Glue jobs on Postgres", () => {
     try {
       await db.update(schema.songsetItems).set({
         recordingHashPrefix: hash,
-        updatedAt: now,
+        updatedAt: sql`${now.toISOString()}::timestamptz + interval '99 microseconds'`,
         arrangementSteps: JSON.stringify({
           version: 1,
           steps: [{ sectionIndex: 0, label: "Verse", startSeconds: 0, endSeconds: 12, manualBounds: true }],
@@ -127,6 +128,10 @@ describe("Glue jobs on Postgres", () => {
       expect(await glueJobRepository.createJobAtomically({
         ...input, target: "intro", toItemId: fromItemId, descriptorKey: quote!.descriptorKey, descriptorJson,
       })).toMatchObject({ kind: "created", job: { target: "intro", boundaryItemId: fromItemId } });
+      const [stored] = await db.select({
+        expected: preciseTimestamp(schema.glueJobs.expectedFromUpdatedAt),
+      }).from(schema.glueJobs).where(eq(schema.glueJobs.id, input.jobId));
+      expect(stored.expected).toBe("2026-11-23T00:00:00.000099Z");
       expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
         .toMatchObject({ preflight: { glues: [{ target: "intro" }] }, snapshot: [] });
       const takeId = randomUUID();
@@ -139,7 +144,13 @@ describe("Glue jobs on Postgres", () => {
         .where(eq(schema.glueJobs.id, input.jobId));
       expect(await updateSongsetBoundary(songsetId, userId, "intro", { takeId })).toBe("saved");
       expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
-        .toMatchObject({ preflight: null, snapshot: [{ target: "intro", take_id: takeId, seconds: 4 }] });
+        .toMatchObject({
+          preflight: null,
+          snapshot: [{
+            target: "intro", take_id: takeId, seconds: 4,
+            from_updated_at: stored.expected, to_updated_at: stored.expected,
+          }],
+        });
       expect(await deleteSongsetItem(fromItemId, songsetId, userId)).toBe(true);
       expect(await glueJobRepository.findJob(input.jobId, userId)).toMatchObject({ target: "intro" });
       expect(await db.transaction((tx) => createRenderGlueSnapshot(tx, songsetId, userId)))
