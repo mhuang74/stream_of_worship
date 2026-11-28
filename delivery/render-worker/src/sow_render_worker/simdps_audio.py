@@ -13,6 +13,12 @@ MODEL_ID = "acestep-v15-base"
 UPSTREAM_REVISION = "f5175f14b3be67e28ffc7c95874265a0390a9ada"
 CHECKPOINT_REVISION = "e432212fec32b8965a14ffa57ae653438d6abd14"
 STEPS = 100
+# Signed R2 lifetime, and the oldest submission the GPU still honors. A Lambda
+# invocation cannot outlive LAMBDA_SECONDS (900) of glue_cascade, so a 900 s
+# submission age can only belong to a dead invocation; 3600 s leaves room for
+# one download+sampling+PUT cycle on top of that.
+PRESIGN_SECONDS = 3600
+STALE_SECONDS = 900
 INPUT_CAP_BYTES = 10_000_000
 
 
