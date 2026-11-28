@@ -207,8 +207,20 @@ When a new johnvansickle release is available:
    ```dockerfile
    ARG FFMPEG_VERSION=X.Y.Z
    ```
-3. Run the full test suite
-4. Commit and deploy
+3. Publish the release asset CI consumes:
+   ```bash
+   cd delivery/render-worker && ./scripts/publish-ffmpeg-release.sh X.Y.Z
+   ```
+   The script prints the archive's SHA256. CI verifies that checksum before installing, so a
+   republished upstream version is caught here rather than in a silent binary swap.
+4. Update `FFMPEG_VERSION` and `FFMPEG_SHA256` in `.github/workflows/ci.yml` (job
+   `render-worker-test`, step `Install FFmpeg`) to the version and the checksum step 3 printed.
+5. Run the full test suite
+6. Commit and deploy
+
+`Install FFmpeg` downloads from this repo's `ffmpeg-static` release asset first and falls back to
+johnvansickle.com only if that source is unreachable, so CI never depends on a single third-party
+origin. Never delete a release asset that a workflow still pins.
 
 ## Deploying to Lambda
 
@@ -405,10 +417,10 @@ reduces render throughput.
 |---|---|
 | Queue | `sow-glue-jobs` |
 | Dead-letter queue | `sow-glue-jobs-dlq` |
-| Visibility timeout | At least 4,680 s |
+| Visibility timeout | At least 5,400 s |
 | Redrive | `maxReceiveCount: 3` |
 | Function | `sow-glue-worker-standard` on standard Lambda |
-| Function timeout | 780 s |
+| Function timeout | 900 s |
 | Event source mapping | batch size 1, `ReportBatchItemFailures`, concurrency 2 |
 
 Run `deploy/aws-up-glue.sh` to provision the standard function and its disabled queue mapping. The [operator runbook](../../docs/glue-operator-runbook.md) covers routine operation and image-only rollback.

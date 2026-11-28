@@ -117,12 +117,18 @@ for name in ("MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"):
 for name, default in (
     ("SOW_GLUE_ELEVENLABS_SECONDS", "60"),
     ("SOW_GLUE_MODAL_HEDGE_SECONDS", "180"),
+    ("SOW_GLUE_SIMDPS_SECONDS", "300"),
     ("SOW_GLUE_MODAL_ENVIRONMENT", "main"),
 ):
     variables[name] = os.environ.get(name, default)
 elevenlabs = int(variables["SOW_GLUE_ELEVENLABS_SECONDS"])
 hedge = int(variables["SOW_GLUE_MODAL_HEDGE_SECONDS"])
-if min(elevenlabs, hedge) < 1 or elevenlabs + hedge + 360 + 60 + 40 > 780:
+simdps = int(variables["SOW_GLUE_SIMDPS_SECONDS"])
+if (
+    min(elevenlabs, hedge, simdps) < 1
+    or elevenlabs + hedge + 360 + 60 + 40 > 780
+    or 2 * simdps + elevenlabs + 180 > 900
+):
     raise SystemExit("Invalid Glue cascade timing")
 
 print(json.dumps({"Variables": variables}, separators=(",", ":")))
@@ -153,11 +159,11 @@ create_sqs_queues() {
     fi
 
     # Increase visibility before updating the function timeout.
-    local visibility=4680
+    local visibility=5400
     if [[ "$QUEUE_NAME" == sow-glue-jobs ]]; then
         visibility=$(aws_cmd sqs get-queue-attributes --queue-url "$QUEUE_URL" \
             --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)
-        visibility=$((visibility > 4680 ? visibility : 4680))
+        visibility=$((visibility > 5400 ? visibility : 5400))
     fi
     local attributes
     attributes="{\"VisibilityTimeout\":\"${visibility}\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${dlq_arn}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
@@ -173,11 +179,11 @@ create_sqs_queues() {
     for attempt in {1..15}; do
         actual=$(aws_cmd sqs get-queue-attributes --queue-url "$QUEUE_URL" \
             --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text)
-        if [[ "$actual" =~ ^[0-9]+$ ]] && ((actual >= 4680)); then break; fi
+        if [[ "$actual" =~ ^[0-9]+$ ]] && ((actual >= 5400)); then break; fi
         sleep 5
     done
-    [[ "$actual" =~ ^[0-9]+$ ]] && ((actual >= 4680)) || {
-        error "Queue visibility must be at least 4680 s."
+    [[ "$actual" =~ ^[0-9]+$ ]] && ((actual >= 5400)) || {
+        error "Queue visibility must be at least 5400 s."
         exit 1
     }
 
@@ -211,7 +217,7 @@ create_or_update_lambda() {
 
         aws_cmd lambda update-function-configuration \
             --function-name "$FUNCTION_NAME" \
-            --timeout 780 \
+            --timeout 900 \
             --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
             --memory-size 3008 \
             --ephemeral-storage Size=2048 \
@@ -224,7 +230,7 @@ create_or_update_lambda() {
             --package-type Image \
             --code "ImageUri=${GLUE_IMAGE_URI:-${ECR_URI}:latest}" \
             --role "$role_arn" \
-            --timeout 780 \
+            --timeout 900 \
             --logging-config LogFormat=JSON,ApplicationLogLevel=INFO,SystemLogLevel=INFO \
             --memory-size 3008 \
             --ephemeral-storage Size=2048 \
@@ -270,7 +276,7 @@ create_event_source_mapping() {
     aws_cmd lambda wait function-updated --function-name "$FUNCTION_NAME"
     local function_ok mapping_ok
     function_ok=$(aws_cmd lambda get-function-configuration --function-name "$FUNCTION_NAME" \
-        --query 'Timeout == `780` && MemorySize == `3008` && EphemeralStorage.Size == `2048` && CapacityProviderConfig == null' --output text)
+        --query 'Timeout == `900` && MemorySize == `3008` && EphemeralStorage.Size == `2048` && CapacityProviderConfig == null' --output text)
     mapping_ok=$(aws_cmd lambda get-event-source-mapping --uuid "$mapping_uuid" \
         --query 'BatchSize == `1` && ScalingConfig.MaximumConcurrency == `2` && contains(FunctionResponseTypes, `"ReportBatchItemFailures"`)' --output text)
     [[ "$function_ok" == True && "$mapping_ok" == True ]] || {

@@ -99,29 +99,9 @@ jobs:
           ls -l /usr/share/fonts/truetype/vendor/
 
       - name: Install FFmpeg
-        run: |
-          # Pin the static build to the version in delivery/render-worker/Dockerfile
-          # so CI encodes with the same libmp3lame/libx264 as production.
-          archive=$(mktemp)
-          trap 'rm -f "$archive"' EXIT
-          releases=https://johnvansickle.com/ffmpeg/releases
-          checksum=abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67
-
-          download_ffmpeg() {
-            curl --max-time 45 --retry 2 --retry-max-time 60 -fsSL -o "$archive" "$1" &&
-              printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
-          }
-
-          if ! download_ffmpeg "$releases/ffmpeg-7.0.2-amd64-static.tar.xz"; then
-            echo "::warning::Pinned FFmpeg download failed or returned an invalid archive. Trying the release URL."
-            if ! download_ffmpeg "$releases/ffmpeg-release-amd64-static.tar.xz"; then
-              echo "::error::Could not download an archive matching the pinned FFmpeg 7.0.2 checksum."
-              exit 1
-            fi
-          fi
-          sudo tar -xJ --strip-components=1 -C /usr/local/bin \
-            --wildcards "ffmpeg-7.0.2-amd64-static/ffmpeg" "ffmpeg-7.0.2-amd64-static/ffprobe" \
-            -f "$archive"
-          ffmpeg -version && ffprobe -version
+        env:
+          FFMPEG_VERSION: "7.0.2"
+          FFMPEG_SHA256: "abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67"
+        run: ./scripts/install-ffmpeg-ci.sh "${FFMPEG_VERSION}" "${FFMPEG_SHA256}"
 
       - run: PYTHONPATH=src pytest tests/ -v

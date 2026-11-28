@@ -27,7 +27,7 @@ from sow_render_worker.glue_provider import (
 )
 from sow_render_worker.glue_staging import ReferenceAudio, prepare_staged_take
 
-LAMBDA_SECONDS = 780
+LAMBDA_SECONDS = 900
 MIN_PREPARATION_SECONDS = 40
 IO_SECONDS = 8
 POLL_SECONDS = 3
@@ -47,7 +47,7 @@ class Timing:
     def from_env(cls):
         try:
             timing = cls(
-                int(os.environ.get("SOW_GLUE_SIMDPS_SECONDS", "120")),
+                int(os.environ.get("SOW_GLUE_SIMDPS_SECONDS", "300")),
                 int(os.environ.get("SOW_GLUE_ELEVENLABS_SECONDS", "60")),
             )
             if (
@@ -359,7 +359,13 @@ class Cascade:
         attempt, request = gpu.stage_inputs(
             self.r2, self.route["runpod_endpoint"], prefix, audio, check_time=self._preparation_time
         )
-        payload = gpu.sign_request(self.r2, prefix, attempt, request)
+        payload = gpu.sign_request(
+            self.r2,
+            prefix,
+            attempt,
+            request,
+            window_seconds=self.route.get("simdps_seconds", 0),
+        )
         self._preparation_time()
         now = _time()
         payload["input"]["submitted_epoch"] = now
