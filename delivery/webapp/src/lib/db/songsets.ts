@@ -2581,7 +2581,7 @@ export async function createRenderGlueSnapshot(
     .where(and(eq(glueJobs.songsetId, songsetId), eq(glueJobs.userId, userId)))
     .orderBy(asc(glueJobs.createdAt));
 
-  const quota = await readGlueQuota(userId);
+  const quota = await readGlueQuota(userId, undefined, tx);
   const takes = takeRows.map(takeRowFromDb);
   const jobs = jobRows.map(jobRowFromDb);
   const resolverArgs = {
